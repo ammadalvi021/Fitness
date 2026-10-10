@@ -1,0 +1,25 @@
+{
+  "description": "FitFusion AI \u2014 AI-powered fitness, diet & healthy lifestyle PWA (monorepo)",
+  "devDependencies": {
+    "typescript": "5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "name": "fitfusion-ai",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:web": "npm run build --workspace apps/web",
+    "db:generate": "npm run db:generate --workspace @fitfusion/db",
+    "db:migrate": "npx prisma migrate deploy --schema packages/db/prisma/schema.prisma",
+    "db:seed": "npm run db:seed --workspace @fitfusion/db",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "packages/*"
+  ]
+}

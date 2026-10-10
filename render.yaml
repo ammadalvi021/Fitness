@@ -1,0 +1,56 @@
+# Render Blueprint for FitFusion AI — deploys the Next.js web service and its
+# PostgreSQL 16 database in one shot.
+#
+# Usage: push this repo to GitHub, then in the Render dashboard go to
+# New -> Blueprint and select the repo. Render creates everything below.
+# After the first deploy, set APP_URL (below) to your service's public URL.
+services:
+  - type: web
+    name: fitfusion-ai
+    runtime: node
+    plan: free
+    # Repo root holds the npm workspaces; the Next.js app lives in apps/web.
+    buildCommand: >-
+      npm install &&
+      npx prisma generate --schema packages/db/prisma/schema.prisma &&
+      npx prisma migrate deploy --schema packages/db/prisma/schema.prisma &&
+      npm run build --workspace apps/web
+    startCommand: npm run start --workspace apps/web
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fitfusion-db
+          property: connectionString
+      # Public base URL of this service. Render does not know it until the
+      # first deploy, so set it manually afterwards to e.g.
+      # https://fitfusion-ai.onrender.com (used for Stripe redirect URLs and
+      # the webhook URL {APP_URL}/api/billing/webhook).
+      - key: APP_URL
+        value: ""
+      # Random per-deploy secret; avoids the production placeholder-secret
+      # rejection in scripts/check-env.mjs. NOTE: regenerating it invalidates
+      # all sessions — sync a fixed value here if you redeploy often.
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: BILLING_PROVIDER
+        value: none
+      - key: STORAGE_DRIVER
+        value: local
+      - key: EMAIL_DRIVER
+        value: console
+      # Optional — add after deploy via the dashboard if you want AI features:
+      # - key: AI_API_KEY
+      #   sync: false
+      # Optional — full Stripe test-mode needs all four (dashboard -> Environment):
+      # STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
+      # STRIPE_PRICE_DIET, STRIPE_PRICE_DIET_EXERCISE
+
+databases:
+  - name: fitfusion-db
+    plan: free
+    postgresMajorVersion: "16"

@@ -1,0 +1,40 @@
+# FitFusion AI — disposable local PostgreSQL 16 for development.
+#
+# Usage (from the repo root):
+#   docker compose up -d        # start PostgreSQL in the background
+#   docker compose down         # stop it (data is kept in the named volume)
+#   docker compose down -v      # stop AND delete all data (fresh start)
+#
+# The default credentials below intentionally match the DATABASE_URL example
+# in .env.example:
+#   DATABASE_URL="postgresql://fitfusion:fitfusion_dev_pw@localhost:5432/fitfusion"
+# so no .env changes are needed to use this container.
+#
+# Port conflict: if you already have PostgreSQL installed locally (e.g. via the
+# EDB installer), port 5432 will already be in use and this container will fail
+# to start. Either stop the local PostgreSQL service first, or change the
+# host-side port mapping below to "5433:5432" and point DATABASE_URL at
+# localhost:5433 instead.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: fitfusion-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fitfusion
+      POSTGRES_PASSWORD: fitfusion_dev_pw
+      POSTGRES_DB: fitfusion
+    ports:
+      - "5432:5432"
+    volumes:
+      - fitfusion-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitfusion -d fitfusion"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  fitfusion-pgdata:
