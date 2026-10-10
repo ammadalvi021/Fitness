@@ -1,0 +1,484 @@
+// FitFusion AI — Prisma schema.
+// Model names and key fields conform to CONTRACT.md (fixed integration surface).
+// Allowed string values for "enum-like" fields (e.g. VerificationToken.type,
+// DiaryEntry.source, Recipe.dietCategory) are enforced server-side via zod in
+// apps/web (see CONTRACT.md); they are plain String columns here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String?
+  name            String?
+  emailVerifiedAt DateTime?
+  status          String    @default("active")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  verificationTokens VerificationToken[]
+  sessions           Session[]
+  consents           Consent[]
+  profile            Profile?
+  subscription       Subscription?
+  measurements       Measurement[]
+  diaryEntries       DiaryEntry[]
+  waterLogs          WaterLog[]
+  mealPlans          MealPlan[]
+  favoriteMeals      FavoriteMeal[]
+  workoutPlans       WorkoutPlan[]
+  workoutSessions    WorkoutSession[]
+  personalRecords    PersonalRecord[]
+  foodScans          FoodScan[]
+  coachConversations CoachConversation[]
+  dataExports        DataExport[]
+}
+
+model VerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  // "email_verify" | "password_reset"
+  type      String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime
+  userAgent  String?
+  ip         String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Consent {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  granted     Boolean
+  grantedAt   DateTime
+  textVersion String
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Profile / subscription
+// ---------------------------------------------------------------------------
+
+model Profile {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  displayName          String?
+  dateOfBirth          DateTime?
+  sex                  String?
+  heightCm             Float?
+  activityLevel        String?
+  goal                 String?
+  targetWeightKg       Float?
+  fitnessExperience    String?
+  workoutLocation      String?
+  equipment            String[]  @default([])
+  workoutDays          String[]  @default([])
+  workoutMinutesPerDay Int?
+  dietPreference       String?   @default("flexible")
+  allergies            String[]  @default([])
+  intolerances         String[]  @default([])
+  halalOnly            Boolean   @default(false)
+  preferredCuisines    String[]  @default([])
+  dislikedIngredients  String[]  @default([])
+  mealsPerDay          Int?      @default(3)
+  budgetTier           String?
+  maxCookMinutes       Int?
+  healthLimitations    String?
+  exerciseRestrictions String?
+  eatingDisorderRisk   Boolean   @default(false)
+  isPregnant           Boolean   @default(false)
+  isBreastfeeding      Boolean   @default(false)
+  onboardingCompletedAt DateTime?
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  planId           String    @default("free")
+  status           String    @default("active")
+  billingPeriod    String?
+  provider         String?
+  providerRef      String?
+  currentPeriodEnd DateTime?
+  // Stripe test-mode/live identifiers. Paid access is granted ONLY by the
+  // signature-verified Stripe webhook — never by a frontend claim.
+  stripeCustomerId     String?
+  stripeSubscriptionId String? @unique
+  // When the subscription first entered past_due (arrears clock start for the
+  // finite grace window PAST_DUE_GRACE_DAYS). NULL = not in arrears.
+  pastDueSince     DateTime?
+  // The most recent Stripe Checkout Session started by POST
+  // /api/billing/checkout for this user (test mode ids are synthetic).
+  // Used to resolve retried / double-POST checkout requests to the SAME
+  // session instead of silently creating a second one (duplicate-
+  // subscription guard). NULL once the webhook binds a subscription
+  // (or the session expires / completes).
+  stripeCheckoutSessionId  String?
+  stripeCheckoutSessionUrl String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Idempotency log for the Stripe webhook. Each Stripe event id is processed
+// at most once: the row is claimed (created with processedAt = null) before
+// handling, and marked processed afterwards. Duplicate, delayed, or
+// out-of-order deliveries are safely skipped.
+model StripeWebhookEvent {
+  id          String    @id @default(cuid())
+  eventId     String    @unique
+  type        String
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Nutrition: measurements, foods, diary, water
+// ---------------------------------------------------------------------------
+
+model Measurement {
+  id         String   @id @default(cuid())
+  userId     String
+  // "weight" | "height" | "waist" | "bmi"
+  type       String
+  value      Float
+  unit       String
+  recordedAt DateTime @default(now())
+  note       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+model Food {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  brand       String?
+  servingSize Float
+  servingUnit String
+  kcal        Float
+  proteinG    Float
+  carbsG      Float
+  fatG        Float
+  fiberG      Float
+  // "seeded" | "user" | "ai_estimate"
+  source      String
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  diaryEntries DiaryEntry[]
+}
+
+model DiaryEntry {
+  id             String   @id @default(cuid())
+  userId         String
+  date           DateTime @db.Date
+  mealType       String
+  foodId         String?
+  customName     String?
+  servings       Float    @default(1)
+  kcal           Float
+  proteinG       Float
+  carbsG         Float
+  fatG           Float
+  fiberG         Float
+  // "manual" | "scan" | "recipe" | "plan"
+  source         String
+  scanId         String?
+  recipeId       String?
+  idempotencyKey String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food   Food?   @relation(fields: [foodId], references: [id], onDelete: SetNull)
+  scan   FoodScan? @relation(fields: [scanId], references: [id], onDelete: SetNull)
+  recipe Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, date])
+}
+
+model WaterLog {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @db.Date
+  ml        Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model MealPlan {
+  id            String   @id @default(cuid())
+  userId        String
+  weekStart     DateTime @db.Date
+  days          Json
+  calorieTarget Int
+  // "template" | "ai"
+  generatedBy   String
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, weekStart])
+}
+
+model FavoriteMeal {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  items     Json
+  kcal      Float
+  proteinG  Float
+  carbsG    Float
+  fatG      Float
+  fiberG    Float
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Recipes
+// ---------------------------------------------------------------------------
+
+model Cuisine {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  region    String?
+  createdAt DateTime @default(now())
+
+  recipes Recipe[]
+}
+
+model Recipe {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  title            String
+  cuisineId        String?
+  // "vegetarian" | "non_vegetarian"
+  dietCategory     String
+  tags             String[] @default([])
+  servings         Int
+  prepMin          Int
+  cookMin          Int
+  difficulty       String
+  ingredients      Json
+  instructions     Json
+  kcalPerServing   Float
+  proteinPerServing Float
+  carbsPerServing  Float
+  fatPerServing    Float
+  fiberPerServing  Float
+  imageUrl         String?
+  videoUrl         String?
+  // "curated" | "ai"
+  source           String
+  verified         Boolean  @default(false)
+  allergens        String[] @default([])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  cuisine      Cuisine?    @relation(fields: [cuisineId], references: [id], onDelete: SetNull)
+  diaryEntries DiaryEntry[]
+
+  @@index([cuisineId])
+  @@index([dietCategory])
+}
+
+// ---------------------------------------------------------------------------
+// Exercises & workouts
+// ---------------------------------------------------------------------------
+
+model Exercise {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  name            String
+  description     String
+  muscleGroups    String[]
+  equipment       String[]
+  difficulty      String
+  exerciseType    String
+  trainingStyles  String[]
+  homeSuitable    Boolean
+  gymSuitable     Boolean
+  steps           Json
+  breathing       String?
+  commonMistakes  Json
+  easierVariation String?
+  harderVariation String?
+  safetyNotes     String?
+  mediaType       String   @default("none")
+  mediaUrl        String?
+  createdAt       DateTime @default(now())
+
+  workoutLogs     WorkoutLog[]
+  personalRecords PersonalRecord[]
+}
+
+model WorkoutPlan {
+  id          String   @id @default(cuid())
+  userId      String
+  weekStart   DateTime @db.Date
+  days        Json
+  // "template" | "ai"
+  generatedBy String
+  createdAt   DateTime @default(now())
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions WorkoutSession[]
+
+  @@index([userId, weekStart])
+}
+
+model WorkoutSession {
+  id            String    @id @default(cuid())
+  userId        String
+  workoutPlanId String?
+  name          String
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime?
+  status        String    @default("in_progress")
+  createdAt     DateTime  @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workoutPlan WorkoutPlan? @relation(fields: [workoutPlanId], references: [id], onDelete: SetNull)
+  logs        WorkoutLog[]
+
+  @@index([userId, startedAt])
+}
+
+model WorkoutLog {
+  id         String   @id @default(cuid())
+  sessionId  String
+  exerciseId String
+  sets       Json
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  session  WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exercise Exercise       @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId])
+  @@index([exerciseId])
+}
+
+model PersonalRecord {
+  id         String   @id @default(cuid())
+  userId     String
+  exerciseId String
+  metric     String
+  value      Float
+  unit       String
+  achievedAt DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, exerciseId, metric])
+}
+
+// ---------------------------------------------------------------------------
+// Food scans, coach, data export
+// ---------------------------------------------------------------------------
+
+model FoodScan {
+  id        String   @id @default(cuid())
+  userId    String
+  imageUrl  String?
+  items     Json
+  // "pending" | "review" | "confirmed" | "failed" | "not_configured"
+  status    String
+  provider  String?
+  createdAt DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  diaryEntries DiaryEntry[]
+
+  @@index([userId])
+}
+
+model CoachConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages CoachMessage[]
+
+  @@index([userId])
+}
+
+model CoachMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  // "user" | "assistant" | "system"
+  role           String
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation CoachConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model DataExport {
+  id          String    @id @default(cuid())
+  userId      String
+  // "pending" | "ready" | "failed"
+  status      String
+  fileUrl     String?
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
