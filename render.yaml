@@ -10,10 +10,16 @@ services:
     runtime: node
     plan: free
     # Repo root holds the npm workspaces; the Next.js app lives in apps/web.
+    # NOTE: NODE_ENV=production makes npm skip devDependencies, so the
+    # build-time tools (typescript, tailwindcss, postcss, @types/*) live in
+    # apps/web `dependencies`, not devDependencies — next build needs them.
+    # The @fitfusion/* workspace packages compile to dist/ (gitignored), so
+    # they must be built before the Next.js app that imports them.
     buildCommand: >-
       npm install &&
       npx prisma generate --schema packages/db/prisma/schema.prisma &&
       npx prisma migrate deploy --schema packages/db/prisma/schema.prisma &&
+      npm run build --workspace @fitfusion/core --workspace @fitfusion/db --workspace @fitfusion/ai &&
       npm run build --workspace apps/web
     startCommand: npm run start --workspace apps/web
     healthCheckPath: /api/health
