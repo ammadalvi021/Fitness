@@ -10,60 +10,19 @@ import {
 } from "@fitfusion/core";
 import { api, ApiError } from "@/lib/api";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
+import {
+  ACTIVITY_OPTIONS,
+  BUDGET_OPTIONS,
+  DAY_OPTIONS,
+  DIET_OPTIONS,
+  EQUIPMENT_OPTIONS,
+  FITNESS_EXPERIENCE_OPTIONS,
+  GOAL_OPTIONS,
+  SEX_OPTIONS,
+  WORKOUT_LOCATION_OPTIONS,
+} from "@/lib/onboarding-options";
 
 const STEPS = ["Basics", "Goals", "Nutrition", "Workouts", "Review"] as const;
-
-const SEX_OPTIONS = [
-  { value: "", label: "Prefer not to say" },
-  { value: "female", label: "Female" },
-  { value: "male", label: "Male" },
-  { value: "other", label: "Other" },
-];
-
-const GOAL_OPTIONS = [
-  { value: "", label: "Not sure yet" },
-  { value: "lose", label: "Lose weight" },
-  { value: "maintain", label: "Maintain weight" },
-  { value: "gain", label: "Gain weight" },
-  { value: "improve_fitness", label: "Improve fitness" },
-  { value: "eat_healthier", label: "Eat healthier" },
-];
-
-const ACTIVITY_OPTIONS = [
-  { value: "", label: "Not sure yet" },
-  { value: "sedentary", label: "Sedentary — little or no exercise" },
-  { value: "light", label: "Light — 1–3 days / week" },
-  { value: "moderate", label: "Moderate — 3–5 days / week" },
-  { value: "active", label: "Active — 6–7 days / week" },
-  { value: "very_active", label: "Very active — hard training daily" },
-];
-
-const DIET_OPTIONS = [
-  { value: "flexible", label: "Flexible — everything" },
-  { value: "vegetarian", label: "Vegetarian" },
-  { value: "vegan", label: "Vegan" },
-  { value: "pescatarian", label: "Pescatarian" },
-  { value: "halal", label: "Halal" },
-];
-
-const EQUIPMENT_OPTIONS = [
-  "Bodyweight",
-  "Dumbbells",
-  "Resistance bands",
-  "Pull-up bar",
-  "Bench",
-  "Full gym",
-];
-
-const DAY_OPTIONS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
 
 function splitList(s: string): string[] {
   return s
@@ -412,10 +371,9 @@ export default function OnboardingPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Budget" htmlFor="ob-budget">
                 <Select id="ob-budget" value={budgetTier} onChange={(e) => setBudgetTier(e.target.value)}>
-                  <option value="">No preference</option>
-                  <option value="budget">Budget-friendly</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="premium">Premium</option>
+                  {BUDGET_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </Select>
               </Field>
               <Field label="Meals per day" htmlFor="ob-mpd">
@@ -432,18 +390,16 @@ export default function OnboardingPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Experience level" htmlFor="ob-exp">
                 <Select id="ob-exp" value={fitnessExperience} onChange={(e) => setFitnessExperience(e.target.value)}>
-                  <option value="">Not sure yet</option>
-                  <option value="beginner">Beginner</option>
-                  <option value="intermediate">Intermediate</option>
-                  <option value="advanced">Advanced</option>
+                  {FITNESS_EXPERIENCE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </Select>
               </Field>
               <Field label="Where do you work out?" htmlFor="ob-loc">
                 <Select id="ob-loc" value={workoutLocation} onChange={(e) => setWorkoutLocation(e.target.value)}>
-                  <option value="">No preference</option>
-                  <option value="home">Home</option>
-                  <option value="gym">Gym</option>
-                  <option value="outdoors">Outdoors</option>
+                  {WORKOUT_LOCATION_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </Select>
               </Field>
             </div>
