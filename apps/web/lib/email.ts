@@ -74,9 +74,9 @@ export function passwordResetEmailHtml(
 }
 
 export function verificationLink(token: string): string {
-  return `${appUrl()}/auth/verify?token=${encodeURIComponent(token)}`;
+  return `${appUrl()}/verify?token=${encodeURIComponent(token)}`;
 }
 
 export function passwordResetLink(token: string): string {
-  return `${appUrl()}/auth/reset-password?token=${encodeURIComponent(token)}`;
+  return `${appUrl()}/reset-password?token=${encodeURIComponent(token)}`;
 }
