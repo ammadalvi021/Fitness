@@ -26,6 +26,7 @@ import {
   round1,
   sumEntries,
   todayYMD,
+  toDiaryPayload,
   unwrapList,
   unwrapObject,
   type DiaryEntry,
@@ -249,7 +250,10 @@ export default function NutritionDiaryPage() {
     await api('/api/diary', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': newIdempotencyKey() },
-      body,
+      // toDiaryPayload flattens the nested `nutrients` object into the
+      // top-level shape DiaryEntrySchema requires (regression fix: every
+      // add path was 400ing with "Invalid diary entry").
+      body: toDiaryPayload(body),
     });
     await refreshDiary();
   }

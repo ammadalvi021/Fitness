@@ -130,6 +130,30 @@ export function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+/**
+ * Flatten a diary-entry body into the shape POST /api/diary expects.
+ *
+ * The nutrition page builds entries with nutrients nested under a
+ * `nutrients` key (`{ nutrients: { kcal, proteinG, ... } }`), but
+ * DiaryEntrySchema requires them FLAT at the top level. Sending the nested
+ * shape fails validation with "Invalid diary entry" — every add path
+ * (search, manual, recipe, favorites) was broken by this. This helper
+ * merges `nutrients` into the top level; callers keep their nested shape.
+ */
+export function toDiaryPayload(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const { nutrients, ...rest } = body;
+  const flat: Record<string, unknown> = { ...rest };
+  if (nutrients && typeof nutrients === 'object' && !Array.isArray(nutrients)) {
+    for (const [k, v] of Object.entries(nutrients as Record<string, unknown>)) {
+      // Never let a nested key clobber an explicit top-level field.
+      if (!(k in flat)) flat[k] = v;
+    }
+  }
+  return flat;
+}
+
 export function sumEntries(entries: DiaryEntry[]): Nutrients {
   return roundNutrients(
     sumNutrients(
