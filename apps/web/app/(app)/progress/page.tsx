@@ -10,16 +10,17 @@
  * renders from the progress payload when present and an empty state otherwise.
  */
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
+import { Skeleton } from "@/components/ui";
 import {
-  Button,
-  Card,
-  EmptyState,
-  PageHeader,
-  Skeleton,
-  Stat,
-} from "@/components/ui";
+  EmptyStateLux,
+  ErrorStateLux,
+  GlassPanel,
+  LuxButton,
+  MetricCard,
+} from "@/components/luxury";
+import { Trophy } from "lucide-react";
 import {
   formatShortDate,
   pickArray,
@@ -66,11 +67,14 @@ interface WaterPoint {
 }
 
 const TOOLTIP_STYLE = {
-  backgroundColor: "var(--tooltip-bg, #fff)",
-  border: "1px solid #e5e5e5",
+  backgroundColor: "var(--bg-elevated)",
+  border: "1px solid var(--border)",
   borderRadius: "12px",
   fontSize: "12px",
+  color: "var(--text)",
 } as const;
+
+const AXIS_TICK = { fontSize: 11, fill: "var(--text-secondary)" } as const;
 
 function ChartCard({
   title,
@@ -84,17 +88,19 @@ function ChartCard({
   empty?: string;
 }) {
   return (
-    <Card>
-      <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
+    <GlassPanel className="p-6">
+      <h2 className="t-card-heading">{title}</h2>
       {subtitle ? (
-        <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{subtitle}</p>
+        <p className="t-meta mb-2">{subtitle}</p>
       ) : null}
       {empty ? (
-        <p className="py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">{empty}</p>
+        <p className="t-body py-8 text-center" style={{ color: "var(--text-secondary)" }}>
+          {empty}
+        </p>
       ) : (
         <div className="h-64 w-full">{children}</div>
       )}
-    </Card>
+    </GlassPanel>
   );
 }
 
@@ -109,6 +115,7 @@ function normalizeWeights(data: unknown): WeightPoint[] {
 }
 
 export default function ProgressPage() {
+  const router = useRouter();
   const [range, setRange] = useState<Range>(30);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,30 +233,28 @@ export default function ProgressPage() {
       : null;
 
   return (
-    <div>
-      <PageHeader
-        title="Progress"
-        subtitle="Trends across weight, nutrition, training, and hydration."
-        actions={
-          <div className="flex gap-1 rounded-xl border border-neutral-200 p-1 dark:border-neutral-700" role="group" aria-label="Date range">
-            {([7, 30, 90] as Range[]).map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRange(r)}
-                aria-pressed={range === r}
-                className={`min-h-[44px] rounded-lg px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  range === r
-                    ? "bg-brand text-white"
-                    : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                }`}
-              >
-                {r}d
-              </button>
-            ))}
-          </div>
-        }
-      />
+    <div className="anim-page-enter">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title">Progress</h1>
+          <p className="t-body mt-1" style={{ color: "var(--text-secondary)" }}>
+            Trends across weight, nutrition, training, and hydration.
+          </p>
+        </div>
+        <div className="flex gap-1 rounded-xl border p-1" style={{ borderColor: "var(--border)" }} role="group" aria-label="Date range">
+          {([7, 30, 90] as Range[]).map((r) => (
+            <LuxButton
+              key={r}
+              variant={range === r ? "primary" : "ghost"}
+              className="px-4"
+              aria-pressed={range === r}
+              onClick={() => setRange(r)}
+            >
+              {r}d
+            </LuxButton>
+          ))}
+        </div>
+      </div>
 
       {loading ? (
         <div className="space-y-4" aria-label="Loading progress">
@@ -262,40 +267,40 @@ export default function ProgressPage() {
           <Skeleton className="h-72" />
         </div>
       ) : error ? (
-        <EmptyState
+        <ErrorStateLux
           title="Couldn't load progress"
           message={error}
-          action={
-            <Button variant="secondary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          }
+          onRetry={() => window.location.reload()}
         />
       ) : (
         <>
           {/* Headline stats */}
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat
+            <MetricCard
               label="Latest weight"
-              value={latestWeight ? `${latestWeight.kg.toFixed(1)} kg` : "—"}
-              sub={latestWeight ? formatShortDate(latestWeight.date) : "No weigh-ins yet"}
+              value={latestWeight ? <span className="t-numeral">{latestWeight.kg.toFixed(1)} kg</span> : "—"}
+              subtext={latestWeight ? formatShortDate(latestWeight.date) : "No weigh-ins yet"}
             />
-            <Stat
+            <MetricCard
               label={`Change (${range}d)`}
               value={
-                weightDelta == null ? "—" : `${weightDelta > 0 ? "+" : ""}${weightDelta.toFixed(1)} kg`
+                weightDelta == null ? "—" : (
+                  <span className="t-numeral">
+                    {weightDelta > 0 ? "+" : ""}{weightDelta.toFixed(1)} kg
+                  </span>
+                )
               }
-              sub="Neutral trend info, not a verdict"
+              subtext="Neutral trend info, not a verdict"
             />
-            <Stat
+            <MetricCard
               label="Workouts"
-              value={String(totalWorkouts)}
-              sub={`in the last ${range} days`}
+              value={<span className="t-numeral">{totalWorkouts}</span>}
+              subtext={`in the last ${range} days`}
             />
-            <Stat
+            <MetricCard
               label="Avg protein"
-              value={avgProtein != null ? `${avgProtein} g` : "—"}
-              sub="per day"
+              value={avgProtein != null ? <span className="t-numeral">{avgProtein} g</span> : "—"}
+              subtext="per day"
             />
           </div>
 
@@ -308,15 +313,15 @@ export default function ProgressPage() {
               {weights.length >= 1 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={weights.map((w) => ({ ...w, label: formatShortDate(w.date) }))}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={24} />
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} stroke="var(--text-secondary)" />
+                    <XAxis dataKey="label" tick={AXIS_TICK} minTickGap={24} />
                     <YAxis
-                      tick={{ fontSize: 11 }}
+                      tick={AXIS_TICK}
                       domain={["auto", "auto"]}
-                      label={{ value: "kg", angle: -90, position: "insideLeft", fontSize: 11 }}
+                      label={{ value: "kg", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--text-secondary)" }}
                     />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Line type="monotone" dataKey="kg" name="Weight (kg)" stroke="var(--brand-primary)" strokeWidth={2.5} dot={false} />
+                    <Line type="monotone" dataKey="kg" name="Weight (kg)" stroke="var(--accent)" strokeWidth={2.5} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : null}
@@ -330,18 +335,18 @@ export default function ProgressPage() {
               {nutrition.length >= 1 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={nutrition.map((n) => ({ ...n, label: formatShortDate(n.date) }))}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={24} />
-                    <YAxis tick={{ fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} stroke="var(--text-secondary)" />
+                    <XAxis dataKey="label" tick={AXIS_TICK} minTickGap={24} />
+                    <YAxis tick={AXIS_TICK} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
                     <Legend />
-                    <Bar dataKey="kcal" name="Calories" fill="var(--brand-primary)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="kcal" name="Calories" fill="var(--accent)" radius={[4, 4, 0, 0]} />
                     {avgTarget != null ? (
                       <ReferenceLine
                         y={avgTarget}
-                        stroke="var(--brand-accent)"
+                        stroke="var(--accent-muted)"
                         strokeDasharray="6 4"
-                        label={{ value: `Target ~${avgTarget}`, fontSize: 11, position: "insideTopRight" }}
+                        label={{ value: `Target ~${avgTarget}`, fontSize: 11, position: "insideTopRight", fill: "var(--text-secondary)" }}
                       />
                     ) : null}
                   </BarChart>
@@ -357,11 +362,11 @@ export default function ProgressPage() {
               {nutrition.length >= 1 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={nutrition.map((n) => ({ ...n, label: formatShortDate(n.date) }))}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={24} />
-                    <YAxis tick={{ fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} stroke="var(--text-secondary)" />
+                    <XAxis dataKey="label" tick={AXIS_TICK} minTickGap={24} />
+                    <YAxis tick={AXIS_TICK} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Area type="monotone" dataKey="proteinG" name="Protein (g)" stroke="var(--brand-primary)" fill="var(--brand-primary)" fillOpacity={0.25} strokeWidth={2} />
+                    <Area type="monotone" dataKey="proteinG" name="Protein (g)" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.25} strokeWidth={2} />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : null}
@@ -375,11 +380,11 @@ export default function ProgressPage() {
               {weeklyVolume.length >= 1 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={weeklyVolume}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} />
-                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} stroke="var(--text-secondary)" />
+                    <XAxis dataKey="week" tick={AXIS_TICK} />
+                    <YAxis tick={AXIS_TICK} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
-                    <Bar dataKey="kg" name="Volume (kg)" fill="var(--brand-accent)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="kg" name="Volume (kg)" fill="var(--accent)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : null}
@@ -393,9 +398,9 @@ export default function ProgressPage() {
               {water.length >= 1 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={water.map((w) => ({ ...w, label: formatShortDate(w.date) }))}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={24} />
-                    <YAxis tick={{ fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.4} stroke="var(--text-secondary)" />
+                    <XAxis dataKey="label" tick={AXIS_TICK} minTickGap={24} />
+                    <YAxis tick={AXIS_TICK} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
                     <Bar dataKey="ml" name="Water (ml)" fill="#38bdf8" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -403,20 +408,21 @@ export default function ProgressPage() {
               ) : null}
             </ChartCard>
 
-            <Card>
-              <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+            <GlassPanel className="p-6">
+              <h2 className="t-card-heading flex items-center gap-2">
+                <Trophy size={18} aria-hidden="true" style={{ color: "var(--accent)" }} />
                 Personal records
               </h2>
               {personalRecords.length ? (
-                <ul className="mt-2 divide-y divide-neutral-100 dark:divide-neutral-800">
+                <ul className="mt-2 divide-y" style={{ borderColor: "var(--border)" }}>
                   {personalRecords.map((pr, i) => {
                     const r = pr as Record<string, unknown>;
                     return (
                       <li key={i} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                        <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                        <span className="t-body font-medium">
                           {toString(r.exerciseName) ?? toString(r.name) ?? "Record"}
                         </span>
-                        <span className="text-neutral-600 dark:text-neutral-400">
+                        <span className="t-body" style={{ color: "var(--text-secondary)" }}>
                           {toString(r.value) ?? ""}
                           {toString(r.unit) ? ` ${toString(r.unit)}` : ""}
                           {toString(r.metric) ? ` · ${toString(r.metric)}` : ""}
@@ -427,21 +433,21 @@ export default function ProgressPage() {
                 </ul>
               ) : (
                 <div className="mt-2">
-                  <EmptyState
+                  <EmptyStateLux
                     title="No personal records yet"
                     message="Complete workouts and log your lifts — your first records will appear here."
                     action={
-                      <Link href="/workouts">
-                        <Button variant="secondary">Go to workouts</Button>
-                      </Link>
+                      <LuxButton variant="secondary" onClick={() => router.push("/workouts")}>
+                        Go to workouts
+                      </LuxButton>
                     }
                   />
                 </div>
               )}
-            </Card>
+            </GlassPanel>
           </div>
 
-          <p className="mt-6 text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="t-meta mt-6">
             Trends are informational and based on what you&apos;ve logged. If you have a
             medical condition, are pregnant, or are under 18, please consult a qualified
             health professional for personalized guidance.

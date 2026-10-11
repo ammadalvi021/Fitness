@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, Check } from "lucide-react";
 import {
   cmFromFeetInches,
   inFromCm,
@@ -9,7 +10,8 @@ import {
   lbFromKg,
 } from "@fitfusion/core";
 import { api, ApiError } from "@/lib/api";
-import { Button, Card, Field, Input, Select } from "@/components/ui";
+import { Field, Input, Select } from "@/components/ui";
+import { GlassPanel, LuxButton } from "@/components/luxury";
 import {
   ACTIVITY_OPTIONS,
   BUDGET_OPTIONS,
@@ -41,15 +43,67 @@ function CheckRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl border border-neutral-200 px-4 py-2 text-sm dark:border-neutral-700">
+    <label
+      className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-xl border px-4 py-2 text-sm transition-colors"
+      style={{
+        borderColor: checked ? "var(--accent)" : "var(--border)",
+        backgroundColor: checked
+          ? "color-mix(in srgb, var(--accent) 8%, transparent)"
+          : "transparent",
+        color: "var(--text)",
+      }}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-5 w-5 accent-green-600"
+        className="h-5 w-5 shrink-0"
+        style={{ accentColor: "var(--accent)" }}
       />
       {label}
     </label>
+  );
+}
+
+/** Segmented metric/imperial unit toggle. */
+function UnitToggle({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: "metric" | "imperial";
+  options: { value: "metric" | "imperial"; label: string }[];
+  onChange: (v: "metric" | "imperial") => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="flex rounded-xl border border-[var(--border)] p-0.5"
+      style={{ backgroundColor: "var(--bg-secondary)" }}
+    >
+      {options.map((u) => {
+        const selected = value === u.value;
+        return (
+          <button
+            key={u.value}
+            type="button"
+            onClick={() => onChange(u.value)}
+            aria-pressed={selected}
+            className="anim-press min-h-[44px] rounded-[10px] px-4 text-sm font-medium transition-colors"
+            style={
+              selected
+                ? { backgroundColor: "var(--accent)", color: "var(--on-accent)" }
+                : { color: "var(--text-secondary)" }
+            }
+          >
+            {u.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -236,44 +290,68 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-        Let&apos;s personalize your experience
-      </h1>
-      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+    <div className="anim-page-enter mx-auto max-w-2xl">
+      <h1 className="t-greeting">Let&apos;s personalize your experience</h1>
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">
         Every step is optional — skip anything you&apos;d rather not answer.
       </p>
 
-      {/* Stepper */}
+      {/* Stepper — gold milestones mark completed steps. */}
       <ol
         aria-label="Onboarding progress"
-        className="mt-6 flex items-center gap-1"
+        className="mt-6 flex items-center gap-1.5"
       >
-        {STEPS.map((label, i) => (
-          <li key={label} className="flex flex-1 flex-col items-center gap-1">
-            <span
-              aria-hidden="true"
-              className={`h-2 w-full rounded-full ${
-                i <= step ? "bg-brand" : "bg-neutral-200 dark:bg-neutral-800"
-              }`}
-            />
-            <span
-              className={`text-[11px] font-medium ${
-                i === step
-                  ? "text-neutral-900 dark:text-neutral-100"
-                  : "text-neutral-500 dark:text-neutral-400"
-              }`}
-              aria-current={i === step ? "step" : undefined}
-            >
-              {label}
-            </span>
-          </li>
-        ))}
+        {STEPS.map((label, i) => {
+          const done = i < step;
+          const current = i === step;
+          return (
+            <li key={label} className="flex flex-1 flex-col items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="flex h-2.5 w-full items-center justify-center overflow-hidden rounded-full"
+                style={{
+                  backgroundColor:
+                    done || current ? "var(--accent)" : "var(--bg-secondary)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                {done && (
+                  <Check
+                    size={12}
+                    strokeWidth={3.5}
+                    style={{ color: "var(--on-accent)" }}
+                  />
+                )}
+              </span>
+              <span
+                className={`text-[11px] ${
+                  current
+                    ? "font-semibold text-[var(--accent)]"
+                    : done
+                      ? "font-medium text-[var(--text)]"
+                      : "font-medium text-[var(--text-secondary)]"
+                }`}
+                aria-current={current ? "step" : undefined}
+              >
+                {label}
+              </span>
+            </li>
+          );
+        })}
       </ol>
 
-      <Card className="mt-6">
+      <GlassPanel className="mt-6 p-6">
         {error && (
-          <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <p
+            role="alert"
+            className="mb-4 rounded-xl px-4 py-3 text-sm"
+            style={{
+              color: "var(--error)",
+              backgroundColor:
+                "color-mix(in srgb, var(--error) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--error) 38%, transparent)",
+            }}
+          >
             {error}
           </p>
         )}
@@ -281,7 +359,7 @@ export default function OnboardingPage() {
         {/* ---------------- Step 1: basics ---------------- */}
         {step === 0 && (
           <div className="space-y-5">
-            <h2 className="text-lg font-semibold">The basics</h2>
+            <h2 className="t-card-heading">The basics</h2>
             <Field label="What should we call you?" htmlFor="ob-name">
               <Input id="ob-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name or nickname" autoComplete="nickname" />
             </Field>
@@ -296,16 +374,17 @@ export default function OnboardingPage() {
               </Select>
             </Field>
             <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Height</span>
-                <div role="group" aria-label="Height units" className="flex rounded-xl border border-neutral-300 dark:border-neutral-700">
-                  {(["metric", "imperial"] as const).map((u) => (
-                    <button key={u} type="button" onClick={() => setHeightUnit(u)} aria-pressed={heightUnit === u}
-                      className={`min-h-[44px] px-4 text-sm font-medium ${heightUnit === u ? "bg-brand text-white rounded-xl" : "text-neutral-600 dark:text-neutral-300"}`}>
-                      {u === "metric" ? "cm" : "ft/in"}
-                    </button>
-                  ))}
-                </div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-[var(--text)]">Height</span>
+                <UnitToggle
+                  label="Height units"
+                  value={heightUnit}
+                  onChange={setHeightUnit}
+                  options={[
+                    { value: "metric", label: "cm" },
+                    { value: "imperial", label: "ft/in" },
+                  ]}
+                />
               </div>
               {heightUnit === "metric" ? (
                 <Input type="number" min={50} max={250} value={heightCm} onChange={(e) => setHeightCm(e.target.value)} placeholder="Height in cm" inputMode="decimal" aria-label="Height in centimeters" />
@@ -317,16 +396,17 @@ export default function OnboardingPage() {
               )}
             </div>
             <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">Current weight</span>
-                <div role="group" aria-label="Weight units" className="flex rounded-xl border border-neutral-300 dark:border-neutral-700">
-                  {(["metric", "imperial"] as const).map((u) => (
-                    <button key={u} type="button" onClick={() => setWeightUnit(u)} aria-pressed={weightUnit === u}
-                      className={`min-h-[44px] px-4 text-sm font-medium ${weightUnit === u ? "bg-brand text-white rounded-xl" : "text-neutral-600 dark:text-neutral-300"}`}>
-                      {u === "metric" ? "kg" : "lb"}
-                    </button>
-                  ))}
-                </div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-[var(--text)]">Current weight</span>
+                <UnitToggle
+                  label="Weight units"
+                  value={weightUnit}
+                  onChange={setWeightUnit}
+                  options={[
+                    { value: "metric", label: "kg" },
+                    { value: "imperial", label: "lb" },
+                  ]}
+                />
               </div>
               <Field label="" htmlFor="ob-weight" hint="Your current weight helps us personalize calorie and macro targets. No judgment — it's just a starting point.">
                 <Input id="ob-weight" type="number" min={20} max={300} step="0.1" value={weightUnit === "metric" ? weightKg : weightLb}
@@ -340,7 +420,7 @@ export default function OnboardingPage() {
         {/* ---------------- Step 2: goals ---------------- */}
         {step === 1 && (
           <div className="space-y-5">
-            <h2 className="text-lg font-semibold">Your goals</h2>
+            <h2 className="t-card-heading">Your goals</h2>
             <Field label="What's your main goal?" htmlFor="ob-goal" hint="This shapes your calorie target and plan recommendations.">
               <Select id="ob-goal" value={goal} onChange={(e) => setGoal(e.target.value)}>
                 {GOAL_OPTIONS.map((o) => (
@@ -364,8 +444,8 @@ export default function OnboardingPage() {
         {/* ---------------- Step 3: diet ---------------- */}
         {step === 2 && (
           <div className="space-y-5">
-            <h2 className="text-lg font-semibold">Food preferences</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            <h2 className="t-card-heading">Food preferences</h2>
+            <p className="text-sm text-[var(--text-secondary)]">
               This is how your meal plans avoid foods you can&apos;t — or don&apos;t want to — eat. We never silently swap a restricted food.
             </p>
             <Field label="Diet preference" htmlFor="ob-diet">
@@ -405,7 +485,7 @@ export default function OnboardingPage() {
         {/* ---------------- Step 4: workouts ---------------- */}
         {step === 3 && (
           <div className="space-y-5">
-            <h2 className="text-lg font-semibold">Workouts</h2>
+            <h2 className="t-card-heading">Workouts</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Experience level" htmlFor="ob-exp">
                 <Select id="ob-exp" value={fitnessExperience} onChange={(e) => setFitnessExperience(e.target.value)}>
@@ -423,7 +503,7 @@ export default function OnboardingPage() {
               </Field>
             </div>
             <div>
-              <span className="mb-2 block text-sm font-medium text-neutral-800 dark:text-neutral-200">Equipment you have</span>
+              <span className="mb-2 block text-sm font-medium text-[var(--text)]">Equipment you have</span>
               <div className="grid gap-2 sm:grid-cols-2">
                 {EQUIPMENT_OPTIONS.map((eq) => (
                   <CheckRow key={eq} label={eq} checked={equipment.includes(eq)} onChange={(v) => toggleIn(equipment, eq, setEquipment)} />
@@ -431,7 +511,7 @@ export default function OnboardingPage() {
               </div>
             </div>
             <div>
-              <span className="mb-2 block text-sm font-medium text-neutral-800 dark:text-neutral-200">Days you can train</span>
+              <span className="mb-2 block text-sm font-medium text-[var(--text)]">Days you can train</span>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {DAY_OPTIONS.map((d) => (
                   <CheckRow key={d} label={d.slice(0, 3)} checked={workoutDays.includes(d)} onChange={(v) => toggleIn(workoutDays, d, setWorkoutDays)} />
@@ -450,8 +530,8 @@ export default function OnboardingPage() {
         {/* ---------------- Step 5: review + safety ---------------- */}
         {step === 4 && (
           <div className="space-y-5">
-            <h2 className="text-lg font-semibold">Almost done — a quick health check</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            <h2 className="t-card-heading">Almost done — a quick health check</h2>
+            <p className="text-sm text-[var(--text-secondary)]">
               These questions are completely optional and asked with care. If any
               apply to you, we&apos;ll keep your plan safe and
               maintenance-focused — and we recommend checking in with a
@@ -463,7 +543,16 @@ export default function OnboardingPage() {
               <CheckRow label="I have a history of, or current concerns about, disordered eating" checked={eatingDisorderRisk} onChange={setEatingDisorderRisk} />
             </div>
             {hasSafetyFlag && (
-              <p role="note" className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+              <p
+                role="note"
+                className="rounded-xl px-4 py-3 text-sm"
+                style={{
+                  color: "var(--warning)",
+                  backgroundColor:
+                    "color-mix(in srgb, var(--warning) 12%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--warning) 38%, transparent)",
+                }}
+              >
                 Thanks for sharing. Your plan will stay at maintenance level —
                 no weight-loss targets — and we encourage you to consult a
                 qualified health professional for personalized guidance.
@@ -473,8 +562,11 @@ export default function OnboardingPage() {
               <Input id="ob-health" value={healthLimitations} onChange={(e) => setHealthLimitations(e.target.value)} placeholder="Optional" />
             </Field>
 
-            <div className="rounded-xl bg-neutral-100 p-4 text-sm text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-              <p className="font-semibold">Your answers</p>
+            <div
+              className="rounded-xl border border-[var(--border)] p-4 text-sm"
+              style={{ backgroundColor: "var(--bg-secondary)", color: "var(--text)" }}
+            >
+              <p className="t-meta">Your answers</p>
               <ul className="mt-2 space-y-1">
                 <li>Goal: {goal ? GOAL_OPTIONS.find((o) => o.value === goal)?.label : "—"}</li>
                 <li>Activity: {activityLevel ? ACTIVITY_OPTIONS.find((o) => o.value === activityLevel)?.label : "—"}</li>
@@ -487,14 +579,26 @@ export default function OnboardingPage() {
         )}
 
         {step === 0 && !basicsValid && (
-          <p role="alert" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-            Please add your {basicsMissing.join(", ")} — your calorie and macro
-            targets can't be calculated without them.
+          <p
+            role="alert"
+            className="mt-4 flex items-start gap-3 rounded-xl px-4 py-3 text-sm font-medium"
+            style={{
+              color: "var(--warning)",
+              backgroundColor:
+                "color-mix(in srgb, var(--warning) 14%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--warning) 45%, transparent)",
+            }}
+          >
+            <AlertTriangle size={18} aria-hidden="true" className="mt-0.5 shrink-0" />
+            <span>
+              Please add your {basicsMissing.join(", ")} — your calorie and macro
+              targets can&apos;t be calculated without them.
+            </span>
           </p>
         )}
         {/* Nav buttons */}
         <div className="mt-8 flex items-center justify-between gap-3">
-          <Button
+          <LuxButton
             variant="ghost"
             onClick={skip}
             disabled={saving || (step === 0 && !basicsValid)}
@@ -502,19 +606,19 @@ export default function OnboardingPage() {
             title={step === 0 && !basicsValid ? "Height, weight, and date of birth are required to continue" : undefined}
           >
             Skip for now
-          </Button>
+          </LuxButton>
           <div className="flex gap-2">
             {step > 0 && (
-              <Button variant="secondary" onClick={() => setStep(step - 1)} disabled={saving}>
+              <LuxButton variant="secondary" onClick={() => setStep(step - 1)} disabled={saving}>
                 Back
-              </Button>
+              </LuxButton>
             )}
-            <Button onClick={next} disabled={saving || (step === 0 && !basicsValid)}>
+            <LuxButton onClick={next} disabled={saving || (step === 0 && !basicsValid)}>
               {saving ? "Saving…" : step === STEPS.length - 1 ? "Finish" : "Continue"}
-            </Button>
+            </LuxButton>
           </div>
         </div>
-      </Card>
+      </GlassPanel>
     </div>
   );
 }

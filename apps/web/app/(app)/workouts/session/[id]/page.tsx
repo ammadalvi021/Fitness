@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * /workouts/session/[id] — live workout session player.
+ * /workouts/session/[id] — live workout session player
+ * (Obsidian Gold luxury presentation).
  *
  * The session snapshot (exercises, sets, reps, rest) is handed over via
  * sessionStorage by the workouts page at creation time — there is no
@@ -10,23 +11,39 @@
  *
  * Finish flow: POST /api/workouts/sessions/[id]/logs per completed exercise,
  * then PATCH /api/workouts/sessions/[id] {status:'completed', endedAt}.
+ *
+ * PRESENTATION ONLY: session flow, timers, set logging, rest periods, and
+ * completion behavior are unchanged. Restyled for mid-workout legibility:
+ * large tabular numerals, gold progress, 44px+ touch targets, compact
+ * animated demonstration of the current exercise.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { api, ApiError } from "@/lib/api";
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  Input,
-  Modal,
-  PageHeader,
+  AlertTriangle,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Dumbbell,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  SkipForward,
+  X,
+} from "lucide-react";
+import { api, ApiError } from "@/lib/api";
+import { Input, Skeleton } from "@/components/ui";
+import {
+  EmptyStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+  LuxDialog,
+  MetricCard,
+  ProgressBar,
   ProgressRing,
-  Skeleton,
-  Stat,
-} from "@/components/ui";
+} from "@/components/luxury";
 import {
   Exercise,
   SessionSnapshot,
@@ -36,6 +53,11 @@ import {
   pickArray,
   sessionStorageKey,
 } from "../../_shared";
+import { formatClock, parseLeadingNumber } from "../../_lux";
+import {
+  ExerciseAnimation,
+  hasExerciseAnimation,
+} from "@/components/ExerciseAnimation";
 
 type Phase = "loading" | "ready" | "missing" | "finishing" | "done";
 
@@ -58,20 +80,7 @@ interface RestState {
   remainingMs: number; // used when paused
 }
 
-function parseLeadingNumber(s: string): number {
-  const m = /[\d.]+/.exec(s);
-  const n = m ? parseFloat(m[0]) : NaN;
-  return Number.isFinite(n) ? n : 0;
-}
-
-function formatClock(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
-  return `${h > 0 ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
-}
+const secondaryText = { color: "var(--text-secondary)" } as const;
 
 /* ------------------------------- Audio beep ------------------------------ */
 function useBeep() {
@@ -464,12 +473,15 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
 
   if (phase === "missing") {
     return (
-      <EmptyState
+      <EmptyStateLux
+        icon={<Dumbbell size={22} aria-hidden="true" />}
         title="We couldn't load this session"
         message="Session details are passed along when you start a workout from your plan, and this browser tab doesn't have them (for example, the link was opened directly or in a new tab). Start a fresh session from your weekly plan."
         action={
           <Link href="/workouts">
-            <Button>Back to workouts</Button>
+            <LuxButton>
+              Back to workouts
+            </LuxButton>
           </Link>
         }
       />
@@ -478,41 +490,55 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
 
   if (phase === "done") {
     return (
-      <div className="mx-auto max-w-2xl">
-        <PageHeader title="Session complete" subtitle={snapshot?.sessionName} />
-        <Card>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat label="Duration" value={formatClock(elapsedMs)} />
-            <Stat label="Exercises" value={String(summary.completedExercises)} sub={`of ${activeExercises.length} planned`} />
-            <Stat label="Sets done" value={String(summary.doneSets)} />
-            <Stat label="Volume" value={`${Math.round(summary.volume)} kg`} />
+      <div className="anim-page-enter mx-auto max-w-2xl">
+        <div className="mb-6">
+          <h1 className="t-page-title">Session complete</h1>
+          {snapshot?.sessionName ? (
+            <p className="mt-1 text-sm" style={secondaryText}>
+              {snapshot.sessionName}
+            </p>
+          ) : null}
+        </div>
+        <GlassPanel className="p-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <MetricCard label="Duration" value={formatClock(elapsedMs)} />
+            <MetricCard
+              label="Exercises"
+              value={String(summary.completedExercises)}
+              subtext={`of ${activeExercises.length} planned`}
+            />
+            <MetricCard label="Sets done" value={String(summary.doneSets)} />
+            <MetricCard label="Volume" value={`${Math.round(summary.volume)} kg`} />
           </div>
-          <p className="mt-4 text-sm text-neutral-600 dark:text-neutral-400">
+          <p className="mt-4 text-sm">
             Estimated energy: <strong>≈ {summary.kcal} kcal</strong>{" "}
-            <span className="text-xs">(approximate)</span>
+            <span className="text-xs" style={secondaryText}>(approximate)</span>
           </p>
-          <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{WORKOUT_SAFETY_COPY}</p>
+          <p className="mt-2 text-xs leading-relaxed" style={secondaryText}>
+            {WORKOUT_SAFETY_COPY}
+          </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href="/workouts">
-              <Button>Back to workouts</Button>
+              <LuxButton>Back to workouts</LuxButton>
             </Link>
             <Link href="/progress">
-              <Button variant="secondary">View progress</Button>
+              <LuxButton variant="secondary">View progress</LuxButton>
             </Link>
           </div>
-        </Card>
+        </GlassPanel>
       </div>
     );
   }
 
   if (!current) {
     return (
-      <EmptyState
+      <EmptyStateLux
+        icon={<Dumbbell size={22} aria-hidden="true" />}
         title="This session has no exercises"
         message="Something went wrong building the workout. Please start a new session from your plan."
         action={
           <Link href="/workouts">
-            <Button>Back to workouts</Button>
+            <LuxButton>Back to workouts</LuxButton>
           </Link>
         }
       />
@@ -522,82 +548,125 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
   const restPct = rest ? Math.min(1, Math.max(0, restRemainingMs / (rest.totalSec * 1000))) : 0;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <PageHeader
-        title={snapshot?.sessionName ?? "Workout session"}
-        subtitle={snapshot?.dayLabel ? `${snapshot.dayLabel} · live session` : "Live session"}
-        actions={
-          <>
-            <Button variant="secondary" onClick={togglePauseSession} aria-pressed={paused}>
-              {paused ? "Resume" : "Pause"}
-            </Button>
-            <Button variant="danger" onClick={() => setEndConfirmOpen(true)}>
-              End session
-            </Button>
-          </>
-        }
-      />
+    <div className="anim-page-enter mx-auto max-w-3xl">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title">{snapshot?.sessionName ?? "Workout session"}</h1>
+          <p className="mt-1 text-sm" style={secondaryText}>
+            {snapshot?.dayLabel ? `${snapshot.dayLabel} · live session` : "Live session"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <LuxButton variant="secondary" onClick={togglePauseSession} aria-pressed={paused}>
+            {paused ? (
+              <Play size={17} aria-hidden="true" />
+            ) : (
+              <Pause size={17} aria-hidden="true" />
+            )}
+            {paused ? "Resume" : "Pause"}
+          </LuxButton>
+          <LuxButton
+            variant="secondary"
+            onClick={() => setEndConfirmOpen(true)}
+            style={{ borderColor: "var(--error)", color: "var(--error)" }}
+          >
+            <X size={17} aria-hidden="true" />
+            End session
+          </LuxButton>
+        </div>
+      </div>
 
       <p className="sr-only" role="status" aria-live="polite">
         {liveMessage}
       </p>
 
       {paused ? (
-        <Card className="mb-4 border-amber-300 dark:border-amber-800">
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+        <GlassPanel
+          className="mb-4 flex items-center gap-3 p-4"
+          style={{ border: "1px solid color-mix(in srgb, var(--warning) 45%, transparent)" }}
+        >
+          <AlertTriangle size={18} aria-hidden="true" style={{ color: "var(--warning)" }} />
+          <p className="text-sm font-semibold">
             Session paused — the timer is stopped. Press Resume when you&apos;re ready.
           </p>
-        </Card>
+        </GlassPanel>
       ) : null}
 
-      <p className="mb-4 text-xs text-neutral-500 dark:text-neutral-400">{WORKOUT_SAFETY_COPY}</p>
+      <p className="mb-4 text-xs leading-relaxed" style={secondaryText}>
+        {WORKOUT_SAFETY_COPY}
+      </p>
 
       {phase === "finishing" ? (
-        <Card>
-          <p className="text-sm text-neutral-700 dark:text-neutral-300">Saving your session…</p>
+        <GlassPanel className="p-5">
+          <p className="text-sm">Saving your session…</p>
           <Skeleton className="mt-3 h-4" />
-        </Card>
+        </GlassPanel>
       ) : (
         <>
           {/* Session clock */}
-          <Card className="mb-4">
-            <div className="flex items-center justify-between gap-4">
-              <Stat label="Elapsed" value={formatClock(elapsedMs)} />
-              <Stat
+          <GlassPanel className="mb-4 p-5">
+            <div className="grid items-center gap-4 sm:grid-cols-3">
+              <div>
+                <p className="t-meta">Elapsed</p>
+                <p
+                  className="t-numeral mt-1"
+                  style={{ fontSize: "2.75rem", lineHeight: 1.05, color: "var(--accent)" }}
+                  aria-label={`Elapsed time ${formatClock(elapsedMs)}`}
+                >
+                  {formatClock(elapsedMs)}
+                </p>
+              </div>
+              <MetricCard
                 label="Progress"
                 value={`${summary.doneSets} sets`}
-                sub={`${summary.completedExercises} of ${activeExercises.length} exercises done`}
+                subtext={`${summary.completedExercises} of ${activeExercises.length} exercises done`}
               />
-              <Stat label="Volume" value={`${Math.round(summary.volume)} kg`} />
+              <MetricCard label="Volume" value={`${Math.round(summary.volume)} kg`} />
             </div>
             {finishError ? (
-              <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
+              <p role="alert" className="mt-3 text-sm font-medium" style={{ color: "var(--error)" }}>
                 {finishError}
               </p>
             ) : null}
-          </Card>
+          </GlassPanel>
 
           {/* Exercise navigator */}
           <nav aria-label="Exercises in this session" className="mb-4 flex flex-wrap gap-2">
             {exercises.map((ex, i) => {
               const doneCount = ex.sets.filter((s) => s.done).length;
               const isCurrent = i === currentIdx;
+              const isComplete = doneCount === ex.sets.length && doneCount > 0;
               return (
                 <button
                   key={ex.key}
                   type="button"
                   onClick={() => setCurrentIdx(i)}
-                  aria-label={`${ex.name}${ex.skipped ? ", skipped" : doneCount === ex.sets.length && doneCount > 0 ? ", complete" : `, ${doneCount} of ${ex.sets.length} sets done`}`}
+                  aria-label={`${ex.name}${ex.skipped ? ", skipped" : isComplete ? ", complete" : `, ${doneCount} of ${ex.sets.length} sets done`}`}
                   aria-current={isCurrent ? "true" : undefined}
-                  className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                  className="anim-press touch-target flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border px-3 text-sm font-semibold"
+                  style={
                     isCurrent
-                      ? "border-brand bg-brand/10 text-brand"
+                      ? {
+                          borderColor: "var(--accent)",
+                          backgroundColor: "var(--accent)",
+                          color: "var(--on-accent)",
+                        }
                       : ex.skipped
-                        ? "border-neutral-200 text-neutral-400 line-through dark:border-neutral-700"
-                        : doneCount === ex.sets.length && doneCount > 0
-                          ? "border-green-500 bg-green-50 text-green-800 dark:bg-green-900/20 dark:text-green-300"
-                          : "border-neutral-200 text-neutral-700 dark:border-neutral-700 dark:text-neutral-300"
-                  }`}
+                        ? {
+                            borderColor: "var(--border)",
+                            color: "var(--text-secondary)",
+                            textDecoration: "line-through",
+                          }
+                        : isComplete
+                          ? {
+                              borderColor:
+                                "color-mix(in srgb, var(--success) 55%, transparent)",
+                              backgroundColor:
+                                "color-mix(in srgb, var(--success) 12%, transparent)",
+                              color: "var(--success)",
+                            }
+                          : { borderColor: "var(--border)", color: "var(--text)" }
+                  }
                 >
                   {i + 1}
                 </button>
@@ -606,13 +675,11 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
           </nav>
 
           {/* Current exercise */}
-          <Card key={current.key}>
+          <GlassPanel key={current.key} className="p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                  {current.name}
-                </h2>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                <h2 className="t-card-heading text-xl">{current.name}</h2>
+                <p className="mt-1 text-xs" style={secondaryText}>
                   Exercise {currentIdx + 1} of {exercises.length}
                   {current.wasReplaced ? " · replacement" : ""}
                   {current.slug ? (
@@ -620,7 +687,8 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
                       {" · "}
                       <Link
                         href={`/workouts/library/${current.slug}`}
-                        className="text-brand underline"
+                        className="underline"
+                        style={{ color: "var(--accent)" }}
                         target="_blank"
                         rel="noreferrer"
                       >
@@ -630,18 +698,43 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
                   ) : null}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="secondary" onClick={() => setReplaceOpen(true)}>
+              <div className="flex shrink-0 gap-2">
+                <LuxButton variant="secondary" onClick={() => setReplaceOpen(true)}>
+                  <RefreshCw size={16} aria-hidden="true" />
                   Replace
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => skipExercise(currentIdx)}>
+                </LuxButton>
+                <LuxButton variant="ghost" onClick={() => skipExercise(currentIdx)}>
+                  <SkipForward size={16} aria-hidden="true" />
                   Skip
-                </Button>
+                </LuxButton>
               </div>
             </div>
 
+            {/* Compact animated demonstration of the current exercise */}
+            {current.slug && hasExerciseAnimation(current.slug) ? (
+              <figure
+                className="mt-4 overflow-hidden rounded-2xl"
+                style={{
+                  backgroundColor: "var(--bg-secondary)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <ExerciseAnimation
+                  slug={current.slug}
+                  label={`${current.name} animated demonstration`}
+                  className="mx-auto aspect-video w-full max-w-sm"
+                />
+                <figcaption
+                  className="t-meta border-t px-4 py-2 text-center"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  Animated demonstration
+                </figcaption>
+              </figure>
+            ) : null}
+
             <div className="mt-4 space-y-2" role="group" aria-label={`Sets for ${current.name}`}>
-              <div className="grid grid-cols-[2.5rem_1fr_1fr_auto] items-center gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              <div className="t-meta grid grid-cols-[2.5rem_1fr_1fr_auto] items-center gap-2">
                 <span>Set</span>
                 <span>Reps</span>
                 <span>Weight (kg)</span>
@@ -650,13 +743,17 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
               {current.sets.map((set, j) => (
                 <div
                   key={j}
-                  className={`grid grid-cols-[2.5rem_1fr_1fr_auto] items-center gap-2 rounded-xl p-1 ${
-                    set.done ? "bg-green-50 dark:bg-green-900/20" : ""
-                  }`}
+                  className="grid grid-cols-[2.5rem_1fr_1fr_auto] items-center gap-2 rounded-xl p-1"
+                  style={
+                    set.done
+                      ? {
+                          backgroundColor:
+                            "color-mix(in srgb, var(--success) 10%, transparent)",
+                        }
+                      : undefined
+                  }
                 >
-                  <span className="text-center text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-                    {j + 1}
-                  </span>
+                  <span className="text-center text-sm font-semibold">{j + 1}</span>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -679,136 +776,148 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
                   />
                   <div className="flex gap-1">
                     {!set.done ? (
-                      <Button
-                        size="sm"
+                      <LuxButton
                         onClick={() => completeSet(currentIdx, j)}
                         aria-label={`Mark set ${j + 1} of ${current.name} complete`}
                       >
+                        <Check size={16} aria-hidden="true" />
                         Done
-                      </Button>
+                      </LuxButton>
                     ) : (
-                      <Button
-                        size="sm"
+                      <LuxButton
                         variant="secondary"
                         onClick={() => updateSet(currentIdx, j, { done: false })}
                         aria-label={`Undo set ${j + 1} of ${current.name}`}
                       >
                         Undo
-                      </Button>
+                      </LuxButton>
                     )}
                     {current.sets.length > 1 && !set.done ? (
-                      <Button
-                        size="sm"
+                      <LuxButton
                         variant="ghost"
                         onClick={() => removeSet(currentIdx, j)}
                         aria-label={`Remove set ${j + 1}`}
                       >
-                        ✕
-                      </Button>
+                        <X size={16} aria-hidden="true" />
+                      </LuxButton>
                     ) : null}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={() => addSet(currentIdx)}>
-                + Add set
-              </Button>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <LuxButton variant="secondary" onClick={() => addSet(currentIdx)}>
+                <Plus size={16} aria-hidden="true" />
+                Add set
+              </LuxButton>
               {currentIdx > 0 ? (
-                <Button size="sm" variant="secondary" onClick={() => setCurrentIdx(currentIdx - 1)}>
-                  ← Previous exercise
-                </Button>
+                <LuxButton variant="secondary" onClick={() => setCurrentIdx(currentIdx - 1)}>
+                  <ChevronLeft size={16} aria-hidden="true" />
+                  Previous exercise
+                </LuxButton>
               ) : null}
               {currentIdx < exercises.length - 1 ? (
-                <Button size="sm" variant="secondary" onClick={() => setCurrentIdx(currentIdx + 1)}>
-                  Next exercise →
-                </Button>
+                <LuxButton variant="secondary" onClick={() => setCurrentIdx(currentIdx + 1)}>
+                  Next exercise
+                  <ChevronRight size={16} aria-hidden="true" />
+                </LuxButton>
               ) : (
-                <Button size="sm" onClick={() => setEndConfirmOpen(true)}>
+                <LuxButton onClick={() => setEndConfirmOpen(true)}>
+                  <Check size={16} aria-hidden="true" />
                   Finish session
-                </Button>
+                </LuxButton>
               )}
             </div>
-          </Card>
+          </GlassPanel>
 
           {/* Rest timer */}
           {rest ? (
-            <Card className="mt-4" aria-label="Rest timer">
-              <div className="flex items-center gap-4">
+            <GlassPanel className="mt-4 p-5" aria-label="Rest timer">
+              <div className="flex flex-wrap items-center gap-5">
                 <ProgressRing
-                  value={restRemainingMs}
-                  max={rest.totalSec * 1000}
-                  size={110}
-                  label={formatClock(restRemainingMs)}
-                  sublabel={rest.paused ? "paused" : "rest remaining"}
+                  value={restPct * 100}
+                  size={120}
+                  strokeWidth={10}
+                  label="Rest"
+                  showValue={false}
                 />
-                <div className="flex-1">
-                  <div
-                    className="h-2.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(restPct * 100)}
-                    aria-label="Rest time remaining"
+                <div className="min-w-0 flex-1">
+                  <p className="t-meta">{rest.paused ? "Rest paused" : "Rest remaining"}</p>
+                  <p
+                    className="t-numeral mt-1"
+                    style={{ fontSize: "2.5rem", lineHeight: 1.1, color: "var(--accent)" }}
+                    aria-label={`Rest time remaining ${formatClock(restRemainingMs)}`}
                   >
-                    <div
-                      className="h-full rounded-full bg-brand transition-[width] duration-200"
-                      style={{ width: `${restPct * 100}%` }}
-                    />
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button size="sm" variant="secondary" onClick={togglePauseRest}>
-                      {rest.paused ? "Resume rest" : "Pause rest"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        restRangRef.current = true;
-                        setRest(null);
-                        setLiveMessage("Rest skipped.");
-                      }}
-                    >
-                      Skip rest
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => startRest(rest.totalSec + 30)}>
-                      +30s
-                    </Button>
-                  </div>
+                    {formatClock(restRemainingMs)}
+                  </p>
+                  {rest.paused ? (
+                    <div className="mt-2">
+                      <LuxBadge tone="warning">Paused</LuxBadge>
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            </Card>
+              <ProgressBar value={restPct * 100} className="mt-4" />
+              <div className="mt-4 flex flex-wrap gap-2">
+                <LuxButton variant="secondary" onClick={togglePauseRest}>
+                  {rest.paused ? (
+                    <Play size={16} aria-hidden="true" />
+                  ) : (
+                    <Pause size={16} aria-hidden="true" />
+                  )}
+                  {rest.paused ? "Resume rest" : "Pause rest"}
+                </LuxButton>
+                <LuxButton
+                  variant="ghost"
+                  onClick={() => {
+                    restRangRef.current = true;
+                    setRest(null);
+                    setLiveMessage("Rest skipped.");
+                  }}
+                >
+                  Skip rest
+                </LuxButton>
+                <LuxButton variant="ghost" onClick={() => startRest(rest.totalSec + 30)}>
+                  +30s
+                </LuxButton>
+              </div>
+            </GlassPanel>
           ) : null}
 
           {/* Skipped list with undo */}
           {exercises.some((e) => e.skipped) ? (
-            <Card className="mt-4">
-              <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-                Skipped
-              </h3>
+            <GlassPanel className="mt-4 p-4">
+              <h3 className="t-card-heading text-sm">Skipped</h3>
               <ul className="mt-2 space-y-1.5">
                 {exercises.map((ex, i) =>
                   ex.skipped ? (
                     <li key={ex.key} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="text-neutral-500 line-through dark:text-neutral-400">
+                      <span className="line-through" style={secondaryText}>
                         {ex.name}
                       </span>
-                      <Button size="sm" variant="ghost" onClick={() => undoSkip(i)}>
+                      <LuxButton variant="ghost" onClick={() => undoSkip(i)}>
                         Undo skip
-                      </Button>
+                      </LuxButton>
                     </li>
                   ) : null
                 )}
               </ul>
-            </Card>
+            </GlassPanel>
           ) : null}
         </>
       )}
 
       {/* Replace modal */}
-      <Modal open={replaceOpen} onClose={() => setReplaceOpen(false)} title="Replace exercise">
-        <Field label="Search exercises" htmlFor="replace-q">
+      <LuxDialog
+        open={replaceOpen}
+        onClose={() => setReplaceOpen(false)}
+        title="Replace exercise"
+      >
+        <div>
+          <label htmlFor="replace-q" className="t-meta mb-1.5 block">
+            Search exercises
+          </label>
           <Input
             id="replace-q"
             type="search"
@@ -816,50 +925,55 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
             onChange={(e) => setReplaceQuery(e.target.value)}
             placeholder="e.g. lunge, back, cable…"
           />
-        </Field>
+        </div>
         <ul className="mt-3 max-h-72 space-y-2 overflow-y-auto">
           {replaceResults.map((e) => (
             <li key={e.slug}>
               <button
                 type="button"
                 onClick={() => replaceExercise(e)}
-                className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 px-3 py-2 text-left text-sm hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-neutral-700 dark:hover:bg-neutral-800"
+                className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-secondary)]"
+                style={{ borderColor: "var(--border)" }}
               >
                 <span>
-                  <span className="block font-medium text-neutral-900 dark:text-neutral-100">
-                    {e.name}
-                  </span>
-                  <span className="block text-xs text-neutral-500 dark:text-neutral-400">
+                  <span className="block font-medium">{e.name}</span>
+                  <span className="block text-xs" style={secondaryText}>
                     {asStringArray(e.muscleGroups).slice(0, 3).join(", ")}
                   </span>
                 </span>
-                <Badge>{e.difficulty}</Badge>
+                <LuxBadge>{e.difficulty}</LuxBadge>
               </button>
             </li>
           ))}
           {replaceResults.length === 0 ? (
-            <li className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
+            <li className="py-6 text-center text-sm" style={secondaryText}>
               No exercises match that search.
             </li>
           ) : null}
         </ul>
-      </Modal>
+      </LuxDialog>
 
       {/* End-early confirm */}
-      <Modal open={endConfirmOpen} onClose={() => setEndConfirmOpen(false)} title="End session?">
-        <p className="text-sm text-neutral-700 dark:text-neutral-300">
+      <LuxDialog
+        open={endConfirmOpen}
+        onClose={() => setEndConfirmOpen(false)}
+        title="End session?"
+        footer={
+          <>
+            <LuxButton onClick={() => void finishSession()}>Save and end</LuxButton>
+            <LuxButton variant="secondary" onClick={() => setEndConfirmOpen(false)}>
+              Keep training
+            </LuxButton>
+          </>
+        }
+      >
+        <p className="text-sm">
           Completed sets will be saved to your workout log.{" "}
           {summary.doneSets === 0
             ? "You haven't completed any sets yet — ending now will save an empty session."
             : `You've completed ${summary.doneSets} ${summary.doneSets === 1 ? "set" : "sets"} so far.`}
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button onClick={() => void finishSession()}>Save and end</Button>
-          <Button variant="secondary" onClick={() => setEndConfirmOpen(false)}>
-            Keep training
-          </Button>
-        </div>
-      </Modal>
+      </LuxDialog>
     </div>
   );
 }

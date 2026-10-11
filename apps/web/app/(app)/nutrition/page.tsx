@@ -2,19 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
+import { ChevronLeft, ChevronRight, Copy, Info, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Input, Modal, Select, Skeleton } from '@/components/ui';
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  Modal,
-  PageHeader,
+  EmptyStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+  MetricCard,
+  ProgressBar,
   ProgressRing,
-  Select,
-  Skeleton,
-  Stat,
-} from '@/components/ui';
+  Tooltip,
+} from '@/components/luxury';
 import {
   addDaysYMD,
   allergenHits,
@@ -93,33 +92,25 @@ function MacroBar({
   value,
   target,
   unit,
-  colorClass,
 }: {
   label: string;
   value: number;
   target: number;
   unit: string;
-  colorClass: string;
 }) {
-  const pct = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : 0;
   return (
     <div>
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="font-medium">{label}</span>
-        <span className="text-sm text-neutral-600 dark:text-neutral-400" aria-live="polite">
-          {round1(value)} / {target} {unit}
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <span className="t-body font-medium">{label}</span>
+        <span className="t-meta" aria-live="polite">
+          <span className="t-numeral">{round1(value)}</span> / <span className="t-numeral">{target}</span> {unit}
         </span>
       </div>
-      <div
-        className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700"
-        role="progressbar"
-        aria-valuenow={Math.round(value)}
-        aria-valuemin={0}
-        aria-valuemax={target}
-        aria-label={`${label} ${round1(value)} of ${target} ${unit}`}
-      >
-        <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${pct}%` }} />
-      </div>
+      <ProgressBar
+        value={value}
+        max={target}
+        label={`${label} ${round1(value)} of ${target} ${unit}`}
+      />
     </div>
   );
 }
@@ -642,60 +633,77 @@ export default function NutritionDiaryPage() {
   const consumed = totals?.kcal ?? 0;
   const remaining = kcalTarget - consumed;
   const waterGoal = targets?.waterMl ?? 2000;
+  const caloriePct = kcalTarget > 0 ? Math.min((consumed / kcalTarget) * 100, 100) : 0;
+  const waterPct = waterGoal > 0 && waterMl != null ? Math.min((waterMl / waterGoal) * 100, 100) : 0;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 pb-24">
-      <PageHeader
-        title="Food diary"
-        subtitle={formatDayLabel(date)}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              aria-label="Previous day"
-              className="min-h-[44px] min-w-[44px]"
-              onClick={() => setDate((d) => addDaysYMD(d, -1))}
-            >
-              ‹
-            </Button>
-            <Input
-              type="date"
-              aria-label="Choose diary date"
-              value={date}
-              max={todayYMD()}
-              onChange={(e) => e.target.value && setDate(e.target.value)}
-              className="min-h-[44px]"
-            />
-            <Button
-              type="button"
-              aria-label="Next day"
-              className="min-h-[44px] min-w-[44px]"
-              disabled={date >= todayYMD()}
-              onClick={() => setDate((d) => addDaysYMD(d, 1))}
-            >
-              ›
-            </Button>
-          </div>
-        }
-      />
+    <div className="anim-page-enter mx-auto max-w-3xl space-y-6 p-4 pb-24">
+      {/* ------------------------------ header ------------------------------ */}
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title">Food diary</h1>
+          <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+            {formatDayLabel(date)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <LuxButton
+            variant="secondary"
+            className="px-3"
+            aria-label="Previous day"
+            onClick={() => setDate((d) => addDaysYMD(d, -1))}
+          >
+            <ChevronLeft size={18} aria-hidden="true" />
+          </LuxButton>
+          <Input
+            type="date"
+            aria-label="Choose diary date"
+            value={date}
+            max={todayYMD()}
+            onChange={(e) => e.target.value && setDate(e.target.value)}
+            className="min-h-[44px]"
+          />
+          <LuxButton
+            variant="secondary"
+            className="px-3"
+            aria-label="Next day"
+            disabled={date >= todayYMD()}
+            onClick={() => setDate((d) => addDaysYMD(d, 1))}
+          >
+            <ChevronRight size={18} aria-hidden="true" />
+          </LuxButton>
+        </div>
+      </div>
 
       {error && (
         <div
           role="alert"
-          className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+          className="rounded-xl border p-3 text-sm"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+            color: 'var(--text)',
+          }}
         >
           {error}
         </div>
       )}
 
       {targets?.professionalGuidance && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+        <div
+          className="rounded-xl border p-3 text-sm"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--warning) 45%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--warning) 10%, transparent)',
+            color: 'var(--text)',
+          }}
+        >
           {targets.professionalGuidance}
         </div>
       )}
 
       {/* ------- daily summary ------- */}
-      <Card className="p-4">
+      <GlassPanel className="p-6">
         {entries === null || !totals || !targets ? (
           <div className="flex items-center gap-6">
             <Skeleton className="h-32 w-32 rounded-full" />
@@ -707,80 +715,95 @@ export default function NutritionDiaryPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-            <div className="flex justify-center">
-              <ProgressRing
-                value={Math.round(consumed)}
-                max={kcalTarget}
-                size={150}
-                label={`${Math.round(consumed)}`}
-                sublabel={
-                  remaining >= 0
-                    ? `${Math.round(remaining)} kcal remaining of ${kcalTarget} target`
-                    : `${Math.round(-remaining)} kcal over target`
-                }
-              />
+            <div className="flex flex-col items-center gap-2">
+              <div className="relative">
+                <ProgressRing value={caloriePct} size={150} showValue={false} label="Calories consumed vs target" />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="t-numeral text-3xl">{Math.round(consumed)}</span>
+                  <span className="t-meta mt-1 flex items-center gap-1">
+                    of {kcalTarget} kcal
+                    <Tooltip tip="Targets are estimated from your profile (age, sex, height, weight, activity level, and goal) — complete your profile for personalized targets.">
+                      <Info size={13} aria-hidden="true" className="cursor-help" style={{ color: 'var(--text-secondary)' }} />
+                    </Tooltip>
+                  </span>
+                </div>
+              </div>
+              <p className="t-body text-center" style={{ color: 'var(--text-secondary)' }}>
+                {entries.length === 0 ? (
+                  <>Nothing logged yet — {kcalTarget.toLocaleString()} kcal available today.</>
+                ) : remaining >= 0 ? (
+                  <>
+                    <span className="t-numeral">{Math.round(remaining)}</span> kcal remaining
+                  </>
+                ) : (
+                  <>
+                    <span className="t-numeral">+{Math.round(-remaining)}</span> kcal over target
+                  </>
+                )}
+              </p>
             </div>
-            <div className="flex-1 space-y-3">
+            <div className="flex-1 space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <Stat label="Target" value={`${kcalTarget} kcal`} />
-                <Stat
+                <MetricCard label="Target" value={<span className="t-numeral">{kcalTarget} kcal</span>} />
+                <MetricCard
                   label="Logged"
-                  value={`${Math.round(consumed)} kcal`}
-                  sub={`${MEAL_ORDER.reduce((n, m) => n + (entriesByMeal.get(m)?.length ?? 0), 0)} items`}
+                  value={<span className="t-numeral">{Math.round(consumed)} kcal</span>}
+                  subtext={`${MEAL_ORDER.reduce((n, m) => n + (entriesByMeal.get(m)?.length ?? 0), 0)} items`}
                 />
               </div>
-              <MacroBar label="Protein" value={totals.proteinG} target={targets.proteinG} unit="g" colorClass="bg-sky-500" />
-              <MacroBar label="Carbs" value={totals.carbsG} target={targets.carbsG} unit="g" colorClass="bg-amber-500" />
-              <MacroBar label="Fat" value={totals.fatG} target={targets.fatG} unit="g" colorClass="bg-rose-500" />
-              <MacroBar label="Fiber" value={totals.fiberG} target={targets.fiberG} unit="g" colorClass="bg-emerald-500" />
+              <MacroBar label="Protein" value={totals.proteinG} target={targets.proteinG} unit="g" />
+              <MacroBar label="Carbs" value={totals.carbsG} target={targets.carbsG} unit="g" />
+              <MacroBar label="Fat" value={totals.fatG} target={targets.fatG} unit="g" />
+              <MacroBar label="Fiber" value={totals.fiberG} target={targets.fiberG} unit="g" />
               {targets.estimated && (
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="t-meta flex items-center gap-1.5">
+                  <Info size={13} aria-hidden="true" />
                   Targets are estimates — complete your profile for personalized targets.
                 </p>
               )}
             </div>
           </div>
         )}
-      </Card>
+      </GlassPanel>
 
       {/* ------- water ------- */}
-      <Card className="p-4">
+      <GlassPanel className="p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex justify-center">
             {waterMl == null ? (
               <Skeleton className="h-24 w-24 rounded-full" />
             ) : (
-              <ProgressRing
-                value={waterMl}
-                max={waterGoal}
-                size={110}
-                label={`${waterMl} ml`}
-                sublabel={`of ${waterGoal} ml goal`}
-              />
+              <div className="relative">
+                <ProgressRing value={waterPct} size={110} showValue={false} label="Water intake vs goal" />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="t-numeral text-xl">{waterMl}</span>
+                  <span className="t-meta">ml</span>
+                </div>
+              </div>
             )}
           </div>
           <div className="flex-1">
-            <h2 className="font-semibold">Water</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">Quick-add your intake for the day.</p>
+            <h2 className="t-card-heading">Water</h2>
+            <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+              Quick-add your intake for the day{waterMl != null ? <> — goal <span className="t-numeral">{waterGoal}</span> ml</> : ''}.
+            </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                className="min-h-[44px]"
+              <LuxButton
+                variant="secondary"
                 disabled={waterSaving || waterMl == null}
                 onClick={() => void addWater(250)}
                 aria-label="Add 250 milliliters of water"
               >
                 +250 ml
-              </Button>
-              <Button
-                type="button"
-                className="min-h-[44px]"
+              </LuxButton>
+              <LuxButton
+                variant="secondary"
                 disabled={waterSaving || waterMl == null}
                 onClick={() => void addWater(500)}
                 aria-label="Add 500 milliliters of water"
               >
                 +500 ml
-              </Button>
+              </LuxButton>
               <Input
                 type="number"
                 min={0}
@@ -791,44 +814,44 @@ export default function NutritionDiaryPage() {
                 onChange={(e) => setCustomWater(e.target.value)}
                 className="min-h-[44px] w-24"
               />
-              <Button
-                type="button"
-                className="min-h-[44px]"
+              <LuxButton
                 disabled={waterSaving || waterMl == null || !customWater}
                 onClick={() => void addWater(num(customWater))}
               >
                 Add
-              </Button>
+              </LuxButton>
             </div>
           </div>
         </div>
-      </Card>
+      </GlassPanel>
 
       {/* ------- meal sections ------- */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Meals</h2>
-        <Button type="button" className="min-h-[44px]" onClick={() => setModal({ kind: 'copy' })}>
+        <h2 className="t-card-heading">Meals</h2>
+        <LuxButton variant="secondary" onClick={() => setModal({ kind: 'copy' })}>
+          <Copy size={16} aria-hidden="true" />
           Copy from another day
-        </Button>
+        </LuxButton>
       </div>
 
       {entries === null ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
-            <Card key={i} className="p-4">
+            <GlassPanel key={i} className="p-4">
               <Skeleton className="h-5 w-32" />
               <Skeleton className="mt-2 h-4 w-full" />
-            </Card>
+            </GlassPanel>
           ))}
         </div>
       ) : entries.length === 0 ? (
-        <EmptyState
+        <EmptyStateLux
           title="No foods logged yet"
           message="Log what you ate and your calories, macros, and fiber will add up here."
           action={
-            <Button type="button" className="min-h-[44px]" onClick={() => openAdd('breakfast')}>
+            <LuxButton onClick={() => openAdd('breakfast')}>
+              <Plus size={16} aria-hidden="true" />
               Log your first food
-            </Button>
+            </LuxButton>
           }
         />
       ) : (
@@ -837,33 +860,34 @@ export default function NutritionDiaryPage() {
             const list = entriesByMeal.get(mt) ?? [];
             const mealKcal = Math.round(list.reduce((n, e) => n + num(e.kcal), 0));
             return (
-              <Card key={mt} className="p-4">
+              <GlassPanel key={mt} className="p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">{mealLabel(mt)}</h3>
+                    <h3 className="t-card-heading">{mealLabel(mt)}</h3>
                     {list.length > 0 ? (
-                      <Badge tone="green">Logged</Badge>
+                      <LuxBadge tone="success">Logged</LuxBadge>
                     ) : (
-                      <Badge>Not logged</Badge>
+                      <LuxBadge>Not logged</LuxBadge>
                     )}
                   </div>
-                  <span className="text-sm text-neutral-600 dark:text-neutral-400" aria-live="polite">
-                    {mealKcal} kcal
+                  <span className="t-meta" aria-live="polite">
+                    <span className="t-numeral">{mealKcal}</span> kcal
                   </span>
                 </div>
 
                 {list.length > 0 && (
-                  <ul className="mt-3 divide-y divide-neutral-200 dark:divide-neutral-700">
+                  <ul className="mt-3 divide-y" style={{ borderColor: 'var(--border)' }}>
                     {list.map((e) => (
                       <li key={e.id} className="flex items-center justify-between gap-2 py-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{entryName(e)}</p>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            {servingText(e)} · {Math.round(num(e.kcal))} kcal · P {round1(num(e.proteinG))}g
+                          <p className="t-body truncate font-medium">{entryName(e)}</p>
+                          <p className="t-meta">
+                            {servingText(e)} · <span className="t-numeral">{Math.round(num(e.kcal))}</span> kcal · P{' '}
+                            <span className="t-numeral">{round1(num(e.proteinG))}</span>g
                           </p>
                           {allergies.length > 0 &&
                             allergenHits([e.customName], allergies).length > 0 && (
-                              <Badge tone="red">Contains your allergen</Badge>
+                              <LuxBadge tone="error" className="mt-1">Contains your allergen</LuxBadge>
                             )}
                         </div>
                         {editingId === e.id ? (
@@ -877,41 +901,38 @@ export default function NutritionDiaryPage() {
                               onChange={(ev) => setEditingServings(ev.target.value)}
                               className="min-h-[44px] w-20"
                             />
-                            <Button
-                              type="button"
-                              className="min-h-[44px]"
+                            <LuxButton
                               disabled={busyId === e.id}
                               onClick={() => void saveEdit(e)}
                             >
                               Save
-                            </Button>
-                            <Button
-                              type="button"
-                              className="min-h-[44px]"
+                            </LuxButton>
+                            <LuxButton
+                              variant="ghost"
                               onClick={() => setEditingId(null)}
                             >
                               Cancel
-                            </Button>
+                            </LuxButton>
                           </div>
                         ) : (
                           <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              className="min-h-[44px]"
+                            <LuxButton
+                              variant="secondary"
                               aria-label={`Edit servings for ${entryName(e)}`}
                               onClick={() => startEdit(e)}
                             >
+                              <Pencil size={15} aria-hidden="true" />
                               Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              className="min-h-[44px]"
+                            </LuxButton>
+                            <LuxButton
+                              variant="ghost"
                               aria-label={`Remove ${entryName(e)}`}
                               disabled={busyId === e.id}
                               onClick={() => void handleDelete(e.id)}
                             >
+                              <Trash2 size={15} aria-hidden="true" />
                               Remove
-                            </Button>
+                            </LuxButton>
                           </div>
                         )}
                       </li>
@@ -920,31 +941,30 @@ export default function NutritionDiaryPage() {
                 )}
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    className="min-h-[44px]"
+                  <LuxButton
                     onClick={() => openAdd(mt)}
                     aria-label={`Add food to ${mealLabel(mt)}`}
                   >
-                    + Add food
-                  </Button>
-                  <Button
-                    type="button"
-                    className="min-h-[44px]"
+                    <Plus size={16} aria-hidden="true" />
+                    Add food
+                  </LuxButton>
+                  <LuxButton
+                    variant="secondary"
                     disabled={busyId === `dup-${mt}`}
                     onClick={() => void handleDuplicateMeal(mt)}
                     aria-label={`Repeat your last ${mealLabel(mt).toLowerCase()}`}
                   >
+                    <Copy size={16} aria-hidden="true" />
                     {busyId === `dup-${mt}` ? 'Copying…' : 'Repeat last'}
-                  </Button>
+                  </LuxButton>
                 </div>
-              </Card>
+              </GlassPanel>
             );
           })}
         </div>
       )}
 
-      {/* ------- add-food modal ------- */}
+      {/* ------- add-food modal (existing Modal — focus behavior preserved) ------- */}
       <Modal
         open={modal?.kind === 'add'}
         onClose={() => setModal(null)}
@@ -959,17 +979,15 @@ export default function NutritionDiaryPage() {
               ['favorites', 'Favorites'],
             ] as const
           ).map(([v, label]) => (
-            <Button
+            <LuxButton
               key={v}
-              type="button"
               role="tab"
               aria-selected={tab === v}
               variant={tab === v ? 'primary' : 'secondary'}
-              className="min-h-[44px]"
               onClick={() => setTab(v)}
             >
               {label}
-            </Button>
+            </LuxButton>
           ))}
         </div>
 
@@ -985,28 +1003,34 @@ export default function NutritionDiaryPage() {
             />
             {foodSearching && <Skeleton className="h-16 w-full" />}
             {foodResults && foodResults.length === 0 && !foodSearching && (
-              <p className="text-sm text-neutral-500">No foods found. Try the Manual tab instead.</p>
+              <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
+                No foods found. Try the Manual tab instead.
+              </p>
             )}
             <ul className="max-h-80 space-y-2 overflow-y-auto">
               {(foodResults ?? []).map((f) => {
                 const hits = allergenHits([f.name, f.brand], allergies);
                 const servings = Math.max(0.25, num(foodServings[f.id], 1));
                 return (
-                  <li key={f.id} className="rounded-lg border p-3 dark:border-neutral-700">
+                  <li
+                    key={f.id}
+                    className="rounded-xl border p-3"
+                    style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium">
+                        <p className="t-body font-medium">
                           {f.name}
-                          {f.brand ? <span className="text-neutral-500"> · {f.brand}</span> : null}
+                          {f.brand ? <span style={{ color: 'var(--text-secondary)' }}> · {f.brand}</span> : null}
                         </p>
-                        <p className="text-xs text-neutral-500">
-                          {Math.round(num(f.kcal))} kcal /{' '}
+                        <p className="t-meta">
+                          <span className="t-numeral">{Math.round(num(f.kcal))}</span> kcal /{' '}
                           {f.servingSize ? `${f.servingSize} ${f.servingUnit ?? ''}` : 'serving'}
                         </p>
                         <div className="mt-1 flex flex-wrap gap-1">
-                          {f.verified && <Badge tone="green">Verified</Badge>}
+                          {f.verified && <LuxBadge tone="success">Verified</LuxBadge>}
                           {hits.length > 0 && (
-                            <Badge tone="red">Contains your allergen: {hits.join(', ')}</Badge>
+                            <LuxBadge tone="error">Contains your allergen: {hits.join(', ')}</LuxBadge>
                           )}
                         </div>
                       </div>
@@ -1021,16 +1045,15 @@ export default function NutritionDiaryPage() {
                         onChange={(e) => setFoodServings((s) => ({ ...s, [f.id]: num(e.target.value, 1) }))}
                         className="min-h-[44px] w-20"
                       />
-                      <span className="text-xs text-neutral-500">servings</span>
-                      <Button
-                        type="button"
-                        className="ml-auto min-h-[44px]"
+                      <span className="t-meta">servings</span>
+                      <LuxButton
+                        className="ml-auto"
                         disabled={busyId === `food-${f.id}`}
                         onClick={() => void handleAddFood(f, (modal as { mealType: MealType }).mealType)}
                         aria-label={`Add ${f.name} to ${mealLabel((modal as { mealType: MealType }).mealType)}`}
                       >
                         {busyId === `food-${f.id}` ? 'Adding…' : 'Add'}
-                      </Button>
+                      </LuxButton>
                     </div>
                   </li>
                 );
@@ -1105,14 +1128,13 @@ export default function NutritionDiaryPage() {
                 className="min-h-[44px]"
               />
             </div>
-            <Button
-              type="button"
-              className="min-h-[44px] w-full"
+            <LuxButton
+              className="w-full"
               disabled={busyId === 'manual'}
               onClick={() => void handleManualAdd((modal as { mealType: MealType }).mealType)}
             >
               {busyId === 'manual' ? 'Adding…' : 'Add to diary'}
-            </Button>
+            </LuxButton>
           </div>
         )}
 
@@ -1141,20 +1163,22 @@ export default function NutritionDiaryPage() {
                     );
                     return (
                       <li key={r.id}>
-                        <Button
-                          type="button"
-                          className="min-h-[44px] w-full text-left"
+                        <LuxButton
+                          variant="secondary"
+                          className="w-full justify-start text-left"
                           onClick={() => {
                             setPickedRecipe(r);
                             setRecipeServings(num(r.servings, 1) || 1);
                           }}
                         >
-                          <span className="block truncate text-sm font-medium">{r.title}</span>
-                          <span className="block text-xs text-neutral-500">
-                            {Math.round(num(r.kcalPerServing))} kcal/serving
+                          <span className="block">
+                            <span className="block truncate text-sm font-medium">{r.title}</span>
+                            <span className="block text-xs" style={{ color: 'var(--text-secondary)' }}>
+                              {Math.round(num(r.kcalPerServing))} kcal/serving
+                            </span>
+                            {hits.length > 0 && <LuxBadge tone="error">Allergen: {hits.join(', ')}</LuxBadge>}
                           </span>
-                          {hits.length > 0 && <Badge tone="red">Allergen: {hits.join(', ')}</Badge>}
-                        </Button>
+                        </LuxButton>
                       </li>
                     );
                   })}
@@ -1163,10 +1187,10 @@ export default function NutritionDiaryPage() {
             ) : (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{pickedRecipe.title}</p>
-                  <Button type="button" className="min-h-[44px]" onClick={() => setPickedRecipe(null)}>
+                  <p className="t-body font-medium">{pickedRecipe.title}</p>
+                  <LuxButton variant="secondary" onClick={() => setPickedRecipe(null)}>
                     Change
-                  </Button>
+                  </LuxButton>
                 </div>
                 {(() => {
                   const hits = allergenHits(
@@ -1182,7 +1206,12 @@ export default function NutritionDiaryPage() {
                   return hits.length > 0 ? (
                     <div
                       role="alert"
-                      className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+                      className="rounded-xl border p-3 text-sm"
+                      style={{
+                        borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+                        backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+                        color: 'var(--text)',
+                      }}
                     >
                       This recipe may contain your allergen{hits.length > 1 ? 's' : ''}:{' '}
                       {hits.join(', ')}. Nothing will be substituted — add it only if you are
@@ -1191,7 +1220,7 @@ export default function NutritionDiaryPage() {
                   ) : null;
                 })()}
                 <div className="flex items-center gap-2">
-                  <span className="text-sm">Servings</span>
+                  <span className="t-body">Servings</span>
                   <Input
                     type="number"
                     min={0.25}
@@ -1201,18 +1230,17 @@ export default function NutritionDiaryPage() {
                     onChange={(e) => setRecipeServings(Math.max(0.25, num(e.target.value, 1)))}
                     className="min-h-[44px] w-24"
                   />
-                  <span className="text-sm text-neutral-500">
-                    ≈ {Math.round(num(pickedRecipe.kcalPerServing) * recipeServings)} kcal
+                  <span className="t-body" style={{ color: 'var(--text-secondary)' }}>
+                    ≈ <span className="t-numeral">{Math.round(num(pickedRecipe.kcalPerServing) * recipeServings)}</span> kcal
                   </span>
                 </div>
-                <Button
-                  type="button"
-                  className="min-h-[44px] w-full"
+                <LuxButton
+                  className="w-full"
                   disabled={busyId === `recipe-${pickedRecipe.id}`}
                   onClick={() => void handleRecipeAdd((modal as { mealType: MealType }).mealType)}
                 >
                   {busyId === `recipe-${pickedRecipe.id}` ? 'Adding…' : 'Add to diary'}
-                </Button>
+                </LuxButton>
               </div>
             )}
           </div>
@@ -1223,7 +1251,7 @@ export default function NutritionDiaryPage() {
             {favorites === null ? (
               <Skeleton className="h-16 w-full" />
             ) : favorites.length === 0 ? (
-              <EmptyState
+              <EmptyStateLux
                 title="No favorites yet"
                 message="Favorite a recipe or save a meal to find it here."
               />
@@ -1232,10 +1260,14 @@ export default function NutritionDiaryPage() {
                 {favorites.map((f) => {
                   const servings = Math.max(0.25, num(favServings[f.key], 1));
                   return (
-                    <li key={f.key} className="rounded-lg border p-3 dark:border-neutral-700">
-                      <p className="text-sm font-medium">{f.name}</p>
-                      <p className="text-xs text-neutral-500">
-                        {f.detail} · {Math.round(f.nutrients.kcal)} kcal/serving
+                    <li
+                      key={f.key}
+                      className="rounded-xl border p-3"
+                      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
+                    >
+                      <p className="t-body font-medium">{f.name}</p>
+                      <p className="t-meta">
+                        {f.detail} · <span className="t-numeral">{Math.round(f.nutrients.kcal)}</span> kcal/serving
                       </p>
                       <div className="mt-2 flex items-center gap-2">
                         <Input
@@ -1247,16 +1279,15 @@ export default function NutritionDiaryPage() {
                           onChange={(e) => setFavServings((s) => ({ ...s, [f.key]: num(e.target.value, 1) }))}
                           className="min-h-[44px] w-20"
                         />
-                        <span className="text-xs text-neutral-500">servings</span>
-                        <Button
-                          type="button"
-                          className="ml-auto min-h-[44px]"
+                        <span className="t-meta">servings</span>
+                        <LuxButton
+                          className="ml-auto"
                           disabled={busyId === `fav-${f.key}`}
                           onClick={() => void handleFavoriteAdd(f, (modal as { mealType: MealType }).mealType)}
                           aria-label={`Add ${f.name} to diary`}
                         >
                           {busyId === `fav-${f.key}` ? 'Adding…' : 'Add'}
-                        </Button>
+                        </LuxButton>
                       </div>
                     </li>
                   );
@@ -1269,7 +1300,7 @@ export default function NutritionDiaryPage() {
 
       {/* ------- copy-day modal ------- */}
       <Modal open={modal?.kind === 'copy'} onClose={() => setModal(null)} title="Copy from another day">
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
           Copy every logged food from a previous day into {formatDayLabel(date)}.
         </p>
         <div className="mt-3 flex items-center gap-2">
@@ -1281,16 +1312,21 @@ export default function NutritionDiaryPage() {
             onChange={(e) => e.target.value && setCopyFrom(e.target.value)}
             className="min-h-[44px]"
           />
-          <Button
-            type="button"
-            className="min-h-[44px]"
+          <LuxButton
             disabled={copyBusy}
             onClick={() => void handleCopyDay()}
           >
             {copyBusy ? 'Copying…' : 'Copy day'}
-          </Button>
+          </LuxButton>
         </div>
       </Modal>
+
+      {/* ------- estimates honesty note ------- */}
+      <p className="t-meta flex items-start gap-1.5">
+        <Info size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
+        Nutrition values from the food database and recipes are estimates, not lab measurements —
+        use them as guidance, not exact accounting.
+      </p>
     </div>
   );
 }

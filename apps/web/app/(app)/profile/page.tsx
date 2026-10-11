@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Button, Card, Field, Input, PageHeader, Select, Skeleton } from "@/components/ui";
+import { Field, Input, Select, Skeleton } from "@/components/ui";
+import { GlassPanel, LuxButton } from "@/components/luxury";
 import { useSession } from "../layout";
 
 interface ProfileForm {
@@ -132,18 +133,43 @@ export default function ProfilePage() {
   }
 
   return (
-    <div>
-      <PageHeader title="Profile" subtitle="Keep your details up to date — they power your targets and plans." />
+    <div className="anim-page-enter">
+      <h1 className="t-greeting">Profile</h1>
+      <p className="t-body mt-1 text-[var(--text-secondary)]">
+        Keep your details up to date — they power your targets and plans.
+      </p>
 
-      <Card>
-        <p className="mb-6 text-sm text-neutral-600 dark:text-neutral-400">
-          Signed in as <strong className="text-neutral-900 dark:text-neutral-100">{session.user.email}</strong>
+      <GlassPanel className="mt-6 p-6">
+        <p className="mb-6 text-sm text-[var(--text-secondary)]">
+          Signed in as <strong className="text-[var(--text)]">{session.user.email}</strong>
         </p>
         {error && (
-          <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</p>
+          <p
+            role="alert"
+            className="mb-4 rounded-xl px-4 py-3 text-sm"
+            style={{
+              color: "var(--error)",
+              backgroundColor:
+                "color-mix(in srgb, var(--error) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--error) 38%, transparent)",
+            }}
+          >
+            {error}
+          </p>
         )}
         {notice && (
-          <p role="status" className="mb-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/30 dark:text-green-300">{notice}</p>
+          <p
+            role="status"
+            className="mb-4 rounded-xl px-4 py-3 text-sm"
+            style={{
+              color: "var(--success)",
+              backgroundColor:
+                "color-mix(in srgb, var(--success) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--success) 38%, transparent)",
+            }}
+          >
+            {notice}
+          </p>
         )}
         <form onSubmit={onSave} className="grid gap-5 sm:grid-cols-2">
           <Field label="Display name" htmlFor="pf-name">
@@ -205,12 +231,12 @@ export default function ProfilePage() {
             <Input id="pf-mpd" type="number" min={1} max={8} inputMode="numeric" value={form.mealsPerDay} onChange={(e) => set("mealsPerDay", e.target.value)} />
           </Field>
           <div className="sm:col-span-2">
-            <Button type="submit" size="lg" disabled={saving}>
+            <LuxButton type="submit" disabled={saving}>
               {saving ? "Saving…" : "Save changes"}
-            </Button>
+            </LuxButton>
           </div>
         </form>
-      </Card>
+      </GlassPanel>
     </div>
   );
 }

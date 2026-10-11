@@ -11,16 +11,17 @@
  *   (HTML-escaped first, then our own tags only).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api";
+import { MessageSquare, Plus, Send, Sparkles } from "lucide-react";
+import { Skeleton, Textarea } from "@/components/ui";
 import {
-  Button,
-  Card,
-  EmptyState,
-  PageHeader,
-  Skeleton,
-  Textarea,
-} from "@/components/ui";
+  ErrorStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+} from "@/components/luxury";
 import { pickArray, pickObject, toString } from "../workouts/_shared";
 
 interface CoachMessageShape {
@@ -69,7 +70,7 @@ function inlineMd(s: string): string {
   return s
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|\W)\*([^*\n]+)\*(?=\W|$)/g, "$1<em>$2</em>")
-    .replace(/`([^`\n]+)`/g, '<code class="rounded bg-neutral-200/70 px-1 py-0.5 text-[0.85em] dark:bg-neutral-700/70">$1</code>');
+    .replace(/`([^`\n]+)`/g, '<code class="rounded px-1 py-0.5 text-[0.85em]" style="background-color: var(--bg-secondary); border: 1px solid var(--border);">$1</code>');
 }
 
 function markdownLiteToHtml(src: string): string {
@@ -121,11 +122,20 @@ function MessageBubble({ message }: { message: CoachMessageShape }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[75%] ${
+        className="max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[75%]"
+        style={
           isUser
-            ? "bg-brand text-white"
-            : "border border-neutral-200 bg-white text-neutral-800 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
-        }`}
+            ? {
+                backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
+                color: "var(--text)",
+              }
+            : {
+                backgroundColor: "color-mix(in srgb, var(--bg-elevated) 78%, transparent)",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+              }
+        }
       >
         {isUser ? (
           <p className="whitespace-pre-wrap">{message.content}</p>
@@ -141,6 +151,7 @@ function MessageBubble({ message }: { message: CoachMessageShape }) {
 }
 
 export default function CoachPage() {
+  const router = useRouter();
   const [conversations, setConversations] = useState<ConversationShape[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -317,12 +328,22 @@ export default function CoachPage() {
 
   /* --------------------------------- Render --------------------------------- */
   return (
-    <div>
-      <PageHeader
-        title="AI Coach"
-        subtitle="Ask about training, nutrition, and habits — answers use your profile context."
-        actions={<Button onClick={() => void newConversation()}>New conversation</Button>}
-      />
+    <div className="anim-page-enter">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title flex items-center gap-3">
+            <Sparkles size={26} aria-hidden="true" style={{ color: "var(--accent)" }} />
+            AI Coach
+          </h1>
+          <p className="t-body mt-1" style={{ color: "var(--text-secondary)" }}>
+            Ask about training, nutrition, and habits — answers use your profile context.
+          </p>
+        </div>
+        <LuxButton variant="secondary" onClick={() => void newConversation()}>
+          <Plus size={16} aria-hidden="true" />
+          New conversation
+        </LuxButton>
+      </div>
 
       {loading ? (
         <div className="grid gap-4 lg:grid-cols-[280px_1fr]" aria-label="Loading coach">
@@ -330,50 +351,53 @@ export default function CoachPage() {
           <Skeleton className="h-96" />
         </div>
       ) : loadError ? (
-        <EmptyState
+        <ErrorStateLux
           title="Couldn't load the coach"
           message={loadError}
-          action={
-            <Button variant="secondary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          }
+          onRetry={() => window.location.reload()}
         />
       ) : showSetupCard ? (
-        <Card className="mx-auto max-w-2xl border-amber-300 dark:border-amber-800">
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-            The AI coach isn&apos;t connected yet
-          </h2>
-          <p className="mt-2 text-sm text-neutral-700 dark:text-neutral-300">
+        <GlassPanel
+          className="mx-auto max-w-2xl p-8"
+          style={{ border: "1px solid color-mix(in srgb, var(--warning) 45%, transparent)" }}
+        >
+          <h2 className="t-card-heading">The AI coach isn&apos;t connected yet</h2>
+          <p className="t-body mt-2" style={{ color: "var(--text-secondary)" }}>
             Coaching answers come from an AI provider configured on the server. To enable it,
-            set the <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">AI_API_KEY</code>{" "}
+            set the{" "}
+            <code className="rounded px-1 py-0.5 text-[0.85em]" style={{ backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+              AI_API_KEY
+            </code>{" "}
             environment variable (plus optional{" "}
-            <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">AI_MODEL</code> /{" "}
-            <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">AI_BASE_URL</code>)
+            <code className="rounded px-1 py-0.5 text-[0.85em]" style={{ backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+              AI_MODEL
+            </code>{" "}
+            /{" "}
+            <code className="rounded px-1 py-0.5 text-[0.85em]" style={{ backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+              AI_BASE_URL
+            </code>)
             and restart the app — see <strong>README.md</strong> for setup steps.
           </p>
-          <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+          <p className="t-body mt-2" style={{ color: "var(--text-secondary)" }}>
             Until then the coach stays quiet rather than guessing. Your workout library,
             plans, and progress tracking all work without it.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/workouts/library">
-              <Button variant="secondary">Browse exercise library</Button>
-            </Link>
-            <Button variant="ghost" onClick={() => setAiSetupDismissed(true)}>
+            <LuxButton variant="secondary" onClick={() => router.push("/workouts/library")}>
+              Browse exercise library
+            </LuxButton>
+            <LuxButton variant="ghost" onClick={() => setAiSetupDismissed(true)}>
               Dismiss
-            </Button>
+            </LuxButton>
           </div>
-        </Card>
+        </GlassPanel>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
           {/* Conversation list */}
-          <Card className="lg:sticky lg:top-4 lg:max-h-[70vh] lg:overflow-y-auto">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-              Conversations
-            </h2>
+          <GlassPanel className="p-4 lg:sticky lg:top-4 lg:max-h-[70vh] lg:overflow-y-auto">
+            <h2 className="t-meta mb-2 uppercase">Conversations</h2>
             {conversations.length === 0 ? (
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              <p className="t-body" style={{ color: "var(--text-secondary)" }}>
                 No conversations yet — ask your first question below.
               </p>
             ) : (
@@ -384,37 +408,62 @@ export default function CoachPage() {
                       type="button"
                       onClick={() => setActiveId(c.id)}
                       aria-current={activeId === c.id ? "true" : undefined}
-                      className={`flex min-h-[44px] w-full items-center rounded-xl px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+                      className="t-body flex min-h-[44px] w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2"
+                      style={
                         activeId === c.id
-                          ? "bg-brand/10 font-semibold text-brand"
-                          : "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                      }`}
+                          ? {
+                              backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)",
+                              border: "1px solid color-mix(in srgb, var(--accent) 45%, transparent)",
+                              color: "var(--text)",
+                              fontWeight: 600,
+                            }
+                          : {
+                              border: "1px solid transparent",
+                              color: "var(--text-secondary)",
+                            }
+                      }
+                      onMouseEnter={(e) => {
+                        if (activeId !== c.id) e.currentTarget.style.backgroundColor = "var(--bg-secondary)";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (activeId !== c.id) e.currentTarget.style.backgroundColor = "transparent";
+                      }}
                     >
+                      <MessageSquare size={15} aria-hidden="true" className="shrink-0" />
                       <span className="truncate">{c.title || "Conversation"}</span>
                     </button>
                   </li>
                 ))}
               </ul>
             )}
-          </Card>
+          </GlassPanel>
 
           {/* Thread */}
-          <Card className="flex min-h-[60vh] flex-col">
+          <GlassPanel className="flex min-h-[60vh] flex-col p-6">
             {profileBits.length ? (
-              <p className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="t-meta mb-3 flex flex-wrap items-center gap-1.5">
                 <span>Using your {profileBits.join(" · ")}</span>
+                {profileBits.map((b) => (
+                  <LuxBadge key={b}>{b}</LuxBadge>
+                ))}
               </p>
             ) : null}
 
             {planGated ? (
-              <div className="mb-3 rounded-xl border border-amber-300 p-3 text-sm dark:border-amber-800">
-                <p className="font-semibold text-neutral-900 dark:text-neutral-100">
+              <div
+                className="mb-3 rounded-xl border p-3 text-sm"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--warning) 45%, transparent)",
+                  backgroundColor: "color-mix(in srgb, var(--warning) 10%, transparent)",
+                }}
+              >
+                <p className="t-body font-semibold">
                   The AI coach needs a plan that includes coaching
                 </p>
-                <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+                <p className="t-body mt-1" style={{ color: "var(--text-secondary)" }}>
                   Your current plan has reached its coach message limit or doesn&apos;t include
                   the AI coach.{" "}
-                  <Link href="/plans" className="font-semibold text-brand underline">
+                  <Link href="/plans" className="font-semibold underline" style={{ color: "var(--accent)" }}>
                     View plans
                   </Link>
                 </p>
@@ -424,24 +473,24 @@ export default function CoachPage() {
             <div className="flex-1 space-y-3 overflow-y-auto" aria-live="polite" aria-label="Conversation">
               {!active || (active.messages ?? []).length === 0 ? (
                 <div className="py-6 text-center">
-                  <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  <p className="t-body font-medium">
                     {active ? "Start the conversation" : "Ask your AI coach anything"}
                   </p>
-                  <p className="mx-auto mt-1 max-w-md text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="t-meta mx-auto mt-1 max-w-md">
                     For example: training tweaks, meal ideas that fit your targets, or help
                     understanding a plateau. The coach can see your goal and activity level.
                   </p>
                   <div className="mt-4 flex flex-wrap justify-center gap-2">
                     {QUICK_ACTIONS.map((q) => (
-                      <button
+                      <LuxButton
                         key={q}
-                        type="button"
-                        onClick={() => void send(q)}
+                        variant="secondary"
                         disabled={sending}
-                        className="min-h-[44px] rounded-full border border-neutral-300 px-4 text-sm text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                        onClick={() => void send(q)}
+                        className="rounded-full"
                       >
                         {q}
-                      </button>
+                      </LuxButton>
                     ))}
                   </div>
                 </div>
@@ -451,7 +500,13 @@ export default function CoachPage() {
 
               {sending ? (
                 <div className="flex justify-start" aria-label="Coach is thinking">
-                  <div className="w-2/3 max-w-md space-y-2 rounded-2xl border border-neutral-200 p-4 dark:border-neutral-700">
+                  <div
+                    className="w-2/3 max-w-md space-y-2 rounded-2xl border p-4"
+                    style={{
+                      backgroundColor: "color-mix(in srgb, var(--bg-elevated) 78%, transparent)",
+                      borderColor: "var(--border)",
+                    }}
+                  >
                     <Skeleton className="h-3 w-11/12" />
                     <Skeleton className="h-3 w-3/4" />
                     <Skeleton className="h-3 w-2/3" />
@@ -462,7 +517,7 @@ export default function CoachPage() {
             </div>
 
             {sendError ? (
-              <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-300">
+              <p role="alert" className="t-body mt-2" style={{ color: "var(--error)" }}>
                 {sendError}
               </p>
             ) : null}
@@ -490,16 +545,17 @@ export default function CoachPage() {
                   className="min-h-[44px] resize-none"
                 />
               </div>
-              <Button type="submit" disabled={sending || !draft.trim()} aria-label="Send message">
+              <LuxButton type="submit" disabled={sending || !draft.trim()} aria-label="Send message">
+                <Send size={16} aria-hidden="true" />
                 {sending ? "Sending…" : "Send"}
-              </Button>
+              </LuxButton>
             </form>
-            <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="t-meta mt-2">
               The coach gives general fitness information, not medical advice. If you have a
               medical condition, are pregnant, or are under 18, please consult a qualified
               health professional for personalized guidance.
             </p>
-          </Card>
+          </GlassPanel>
         </div>
       )}
     </div>

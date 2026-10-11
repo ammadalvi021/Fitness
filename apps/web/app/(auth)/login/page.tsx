@@ -4,7 +4,8 @@ import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
-import { Button, Field, Input } from "@/components/ui";
+import { Field, Input } from "@/components/ui";
+import { LuxButton } from "@/components/luxury";
 
 function LoginForm() {
   const router = useRouter();
@@ -40,16 +41,23 @@ function LoginForm() {
 
   return (
     <>
-      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-        Welcome back
-      </h1>
-      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+      <h1 className="t-card-heading text-2xl">Welcome back</h1>
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">
         Sign in to continue your progress toward your goal.
       </p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate={false}>
         {error && (
-          <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <p
+            role="alert"
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              color: "var(--error)",
+              backgroundColor:
+                "color-mix(in srgb, var(--error) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--error) 38%, transparent)",
+            }}
+          >
             {error}
           </p>
         )}
@@ -78,19 +86,19 @@ function LoginForm() {
         <div className="flex justify-end">
           <Link
             href="/forgot-password"
-            className="text-sm font-medium text-brand hover:underline"
+            className="text-sm font-medium text-[var(--accent)] hover:underline"
           >
             Forgot password?
           </Link>
         </div>
-        <Button type="submit" size="lg" className="w-full" disabled={loading}>
+        <LuxButton type="submit" className="w-full" disabled={loading}>
           {loading ? "Signing in…" : "Sign in"}
-        </Button>
+        </LuxButton>
       </form>
 
-      <p className="mt-6 text-center text-sm text-neutral-600 dark:text-neutral-400">
+      <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">
         New here?{" "}
-        <Link href="/register" className="font-medium text-brand hover:underline">
+        <Link href="/register" className="font-medium text-[var(--accent)] hover:underline">
           Create an account
         </Link>
       </p>
@@ -100,7 +108,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-neutral-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-[var(--text-secondary)]">Loading…</p>}>
       <LoginForm />
     </Suspense>
   );

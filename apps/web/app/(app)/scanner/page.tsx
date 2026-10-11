@@ -3,16 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  Modal,
-  PageHeader,
-  Select,
-  Skeleton,
-} from '@/components/ui';
+  AlertTriangle,
+  Camera,
+  Check,
+  Info,
+  Plus,
+  ScanLine,
+  Trash2,
+} from 'lucide-react';
+import { Input, Modal, Select, Skeleton } from '@/components/ui';
+import {
+  EmptyStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+} from '@/components/luxury';
 import {
   allergenHits,
   formatDayLabel,
@@ -142,12 +147,12 @@ function normalizeScan(s: Record<string, unknown>): FoodScanView {
   };
 }
 
-function confidenceTone(c: string): 'green' | 'amber' | 'red' | undefined {
+function confidenceTone(c: string): 'success' | 'warning' | 'error' | 'neutral' {
   const v = c.toLowerCase();
-  if (/(^|\D)(0\.[7-9]|0\.9\d*|1(\.0)?)(\D|$)/.test(v) || v.includes('high')) return 'green';
-  if (v.includes('low')) return 'red';
-  if (v.includes('med') || v === '') return undefined;
-  return 'amber';
+  if (/(^|\D)(0\.[7-9]|0\.9\d*|1(\.0)?)(\D|$)/.test(v) || v.includes('high')) return 'success';
+  if (v.includes('low')) return 'error';
+  if (v.includes('med') || v === '') return 'neutral';
+  return 'warning';
 }
 
 const MEAL_OPTIONS: MealType[] = [
@@ -364,22 +369,38 @@ export default function ScannerPage() {
   /* ---------------- render ---------------- */
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 pb-24">
-      <PageHeader title="Food scanner" subtitle="Snap a meal, review the estimate, log it" />
+    <div className="anim-page-enter mx-auto max-w-3xl space-y-6 p-4 pb-24">
+      <div className="mb-2">
+        <h1 className="t-page-title flex items-center gap-3">
+          <ScanLine size={26} aria-hidden="true" style={{ color: 'var(--accent)' }} />
+          Food scanner
+        </h1>
+        <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+          Snap a meal, review the estimate, log it
+        </p>
+      </div>
 
       {error && (
         <div
           role="alert"
-          className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+          className="rounded-xl border p-3 text-sm"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+            color: 'var(--text)',
+          }}
         >
           {error}
         </div>
       )}
 
       {/* ------- upload card ------- */}
-      <Card className="p-4">
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">{ESTIMATE_COPY}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
+      <GlassPanel className="p-6">
+        <p className="t-body flex items-start gap-2" style={{ color: 'var(--text-secondary)' }}>
+          <Info size={15} aria-hidden="true" className="mt-0.5 shrink-0" style={{ color: 'var(--accent)' }} />
+          {ESTIMATE_COPY}
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <input
             ref={fileRef}
             type="file"
@@ -392,80 +413,89 @@ export default function ScannerPage() {
           />
           <label
             htmlFor="scan-photo"
-            className="inline-flex min-h-[44px] cursor-pointer items-center justify-center rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white dark:bg-neutral-100 dark:text-neutral-900"
+            className="inline-flex min-h-[44px] cursor-pointer items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-base font-medium transition-colors"
+            style={{ backgroundColor: 'var(--accent)', color: 'var(--on-accent)' }}
           >
+            <Camera size={17} aria-hidden="true" />
             {uploading ? 'Analyzing…' : 'Take / choose photo'}
           </label>
-          {uploading && <span className="text-sm text-neutral-500">Analyzing your photo…</span>}
+          {uploading && (
+            <span className="t-body" style={{ color: 'var(--text-secondary)' }}>
+              Analyzing your photo…
+            </span>
+          )}
         </div>
         {!visionChecked ? (
           <Skeleton className="mt-3 h-4 w-48" />
         ) : (
           !visionConfigured && (
-            <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+            <p
+              className="t-meta mt-3 flex items-center gap-1.5"
+              style={{ color: 'var(--warning)' }}
+            >
+              <AlertTriangle size={14} aria-hidden="true" />
               AI vision doesn&apos;t look configured — uploads will show the setup screen below.
             </p>
           )
         )}
-      </Card>
+      </GlassPanel>
 
-      {/* ------- not configured ------- */}
+      {/* ------- not configured (copy kept exactly — honesty is a safety feature) ------- */}
       {notConfigured && (
-        <Card className="p-6 text-center" role="status">
-          <h2 className="text-lg font-semibold">AI food scanning isn&apos;t set up yet</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-neutral-600 dark:text-neutral-400">
+        <GlassPanel className="p-8 text-center" role="status">
+          <h2 className="t-card-heading">AI food scanning isn&apos;t set up yet</h2>
+          <p className="t-body mx-auto mt-2 max-w-md" style={{ color: 'var(--text-secondary)' }}>
             Photo analysis needs an AI vision provider. To enable it, add your vision API key — see
             the project README (&ldquo;AI setup&rdquo;) for instructions.
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <Button
-              type="button"
-              className="min-h-[44px]"
+            <LuxButton
               onClick={() => {
                 window.location.href = '/nutrition';
               }}
             >
               Log food manually instead
-            </Button>
-            <Button
-              type="button"
-              className="min-h-[44px]"
+            </LuxButton>
+            <LuxButton
+              variant="secondary"
               onClick={() => {
                 setNotConfigured(false);
                 fileRef.current?.click();
               }}
             >
               Try another photo
-            </Button>
+            </LuxButton>
           </div>
-        </Card>
+        </GlassPanel>
       )}
 
       {/* ------- review screen ------- */}
       {scan && scan.status !== 'not_configured' && (
         <div className="space-y-4">
-          <Card className="p-4">
+          <GlassPanel className="p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-semibold">Review detected items</h2>
-              <Badge tone={scan.status === 'review' ? 'amber' : undefined}>
+              <h2 className="t-card-heading">Review detected items</h2>
+              <LuxBadge tone={scan.status === 'review' ? 'warning' : 'neutral'}>
                 {scan.status === 'confirmed' ? 'Already logged' : 'Needs review'}
-              </Badge>
+              </LuxBadge>
             </div>
-            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{ESTIMATE_COPY}</p>
-            <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400" aria-live="polite">
-              {included.length} item{included.length === 1 ? '' : 's'} selected · ≈ {includedKcal} kcal
-              total (estimate)
+            <p className="t-meta mt-1">{ESTIMATE_COPY}</p>
+            <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }} aria-live="polite">
+              <span className="t-numeral">{included.length}</span> item{included.length === 1 ? '' : 's'} selected · ≈{' '}
+              <span className="t-numeral">{includedKcal}</span> kcal total (estimate)
             </p>
-          </Card>
+          </GlassPanel>
 
           {drafts.length === 0 && (
-            <EmptyState
+            <EmptyStateLux
+              icon={<Camera size={22} aria-hidden="true" />}
               title="No items detected"
               message="The photo didn't yield any recognizable foods. Add items by hand instead."
               action={
-                <Button type="button" className="min-h-[44px]" onClick={addBlankDraft}>
+                <LuxButton onClick={addBlankDraft}>
+                  <Plus size={16} aria-hidden="true" />
                   Add item manually
-                </Button>
+                </LuxButton>
               }
             />
           )}
@@ -473,9 +503,9 @@ export default function ScannerPage() {
           {drafts.map((d) => {
             const hits = allergenHits([d.name], allergies);
             return (
-              <Card key={d.key} className="p-4">
+              <GlassPanel key={d.key} className="p-5">
                 <div className="flex items-start justify-between gap-2">
-                  <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm font-medium">
+                  <label className="t-body flex min-h-[44px] cursor-pointer items-center gap-2 font-medium">
                     <input
                       type="checkbox"
                       className="h-5 w-5"
@@ -485,23 +515,31 @@ export default function ScannerPage() {
                     />
                     Include
                   </label>
-                  {d.confidence && <Badge tone={confidenceTone(d.confidence)}>Confidence: {d.confidence}</Badge>}
-                  <Button
-                    type="button"
-                    className="min-h-[44px]"
+                  {d.confidence && <LuxBadge tone={confidenceTone(d.confidence)}>Confidence: {d.confidence}</LuxBadge>}
+                  <LuxButton
+                    variant="ghost"
                     aria-label={`Remove ${d.name || 'item'}`}
                     onClick={() => removeDraft(d.key)}
                   >
+                    <Trash2 size={15} aria-hidden="true" />
                     Remove
-                  </Button>
+                  </LuxButton>
                 </div>
 
                 {hits.length > 0 && (
                   <div
                     role="alert"
-                    className="mt-2 rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+                    className="mt-2 rounded-xl border p-2 text-xs"
+                    style={{
+                      borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+                      backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+                      color: 'var(--text)',
+                    }}
                   >
-                    May contain your allergen{hits.length > 1 ? 's' : ''}: {hits.join(', ')}.
+                    <span className="flex items-center gap-1.5 font-semibold">
+                      <AlertTriangle size={14} aria-hidden="true" style={{ color: 'var(--error)' }} />
+                      May contain your allergen{hits.length > 1 ? 's' : ''}: {hits.join(', ')}.
+                    </span>
                   </div>
                 )}
 
@@ -534,9 +572,12 @@ export default function ScannerPage() {
                   />
                 </div>
 
-                <div className="mt-3 rounded-lg bg-neutral-100 p-3 dark:bg-neutral-800">
+                <div
+                  className="mt-3 rounded-xl border p-3"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
+                >
                   <div className="flex flex-wrap items-center gap-2">
-                    <label htmlFor={`kcal-${d.key}`} className="text-sm font-medium">
+                    <label htmlFor={`kcal-${d.key}`} className="t-body font-medium">
                       Best estimate (kcal)
                     </label>
                     <Input
@@ -548,7 +589,7 @@ export default function ScannerPage() {
                       className="min-h-[44px] w-28"
                     />
                     {(d.kcalLow != null || d.kcalHigh != null) && (
-                      <span className="text-xs text-neutral-500">
+                      <span className="t-meta">
                         Range: {d.kcalLow != null ? Math.round(d.kcalLow) : '?'}–
                         {d.kcalHigh != null ? Math.round(d.kcalHigh) : '?'} kcal (estimate)
                       </span>
@@ -575,13 +616,13 @@ export default function ScannerPage() {
                       />
                     ))}
                   </div>
-                  <p className="mt-1 text-xs text-neutral-500">All nutrition values are estimates.</p>
+                  <p className="t-meta mt-1">All nutrition values are estimates.</p>
                 </div>
 
                 {d.assumptions.length > 0 && (
                   <div className="mt-3">
-                    <h4 className="text-sm font-semibold">What the AI assumed</h4>
-                    <ul className="mt-1 list-disc pl-5 text-sm text-neutral-600 dark:text-neutral-400">
+                    <h4 className="t-body font-semibold">What the AI assumed</h4>
+                    <ul className="t-body mt-1 list-disc pl-5" style={{ color: 'var(--text-secondary)' }}>
                       {d.assumptions.map((a, i) => (
                         <li key={i}>{a}</li>
                       ))}
@@ -591,47 +632,51 @@ export default function ScannerPage() {
 
                 {d.alternatives.length > 0 && (
                   <div className="mt-3">
-                    <h4 className="text-sm font-semibold">Could it be one of these instead?</h4>
+                    <h4 className="t-body font-semibold">Could it be one of these instead?</h4>
                     <div className="mt-1 flex flex-wrap gap-2">
                       {d.alternatives.map((a, i) => (
-                        <Button
+                        <LuxButton
                           key={i}
-                          type="button"
-                          className="min-h-[44px]"
+                          variant="secondary"
                           onClick={() => updateDraft(d.key, { name: a })}
                           aria-label={`Use ${a} instead`}
                         >
                           {a}
-                        </Button>
+                        </LuxButton>
                       ))}
                     </div>
                   </div>
                 )}
-              </Card>
+              </GlassPanel>
             );
           })}
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" className="min-h-[44px]" onClick={addBlankDraft}>
-              + Add item
-            </Button>
-            <Button
-              type="button"
-              className="min-h-[44px]"
+            <LuxButton variant="secondary" onClick={addBlankDraft}>
+              <Plus size={16} aria-hidden="true" />
+              Add item
+            </LuxButton>
+            <LuxButton
               disabled={included.length === 0 || scan.status === 'confirmed'}
               onClick={() => setConfirmOpen(true)}
             >
+              <Check size={16} aria-hidden="true" />
               {scan.status === 'confirmed' ? 'Already logged' : `Confirm & log (${included.length})`}
-            </Button>
+            </LuxButton>
           </div>
 
           {confirmed && (
             <div
               role="status"
-              className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+              className="rounded-xl border p-3 text-sm"
+              style={{
+                borderColor: 'color-mix(in srgb, var(--success) 45%, transparent)',
+                backgroundColor: 'color-mix(in srgb, var(--success) 10%, transparent)',
+                color: 'var(--text)',
+              }}
             >
               Logged to your diary for {formatDayLabel(confirmDate)} ·{' '}
-              <a className="underline" href={`/nutrition?date=${confirmDate}`}>
+              <a className="underline" style={{ color: 'var(--accent)' }} href={`/nutrition?date=${confirmDate}`}>
                 View diary
               </a>
             </div>
@@ -639,15 +684,15 @@ export default function ScannerPage() {
         </div>
       )}
 
-      {/* ------- confirm modal ------- */}
+      {/* ------- confirm modal (existing Modal — focus behavior preserved) ------- */}
       <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title="Log to diary">
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          {included.length} item{included.length === 1 ? '' : 's'} · ≈ {includedKcal} kcal (estimate).
-          Choose where they go.
+        <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
+          <span className="t-numeral">{included.length}</span> item{included.length === 1 ? '' : 's'} · ≈{' '}
+          <span className="t-numeral">{includedKcal}</span> kcal (estimate). Choose where they go.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
-            <label htmlFor="scan-date" className="block text-sm font-medium">
+            <label htmlFor="scan-date" className="t-body block font-medium">
               Date
             </label>
             <Input
@@ -660,7 +705,7 @@ export default function ScannerPage() {
             />
           </div>
           <div>
-            <label htmlFor="scan-meal" className="block text-sm font-medium">
+            <label htmlFor="scan-meal" className="t-body block font-medium">
               Meal
             </label>
             <Select
@@ -677,63 +722,63 @@ export default function ScannerPage() {
             </Select>
           </div>
         </div>
-        <Button
-          type="button"
-          className="mt-4 min-h-[44px] w-full"
+        <LuxButton
+          className="mt-4 w-full"
           disabled={confirming}
           onClick={() => void handleConfirm()}
         >
           {confirming ? 'Logging…' : 'Confirm & log to diary'}
-        </Button>
+        </LuxButton>
       </Modal>
 
       {/* ------- history ------- */}
       <div>
-        <h2 className="text-lg font-semibold">Scan history</h2>
+        <h2 className="t-card-heading">Scan history</h2>
         {history === null ? (
           <div className="mt-2 space-y-2">
             <Skeleton className="h-16 w-full" />
             <Skeleton className="h-16 w-full" />
           </div>
         ) : history.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-500">No scans yet.</p>
+          <p className="t-body mt-2" style={{ color: 'var(--text-secondary)' }}>
+            No scans yet.
+          </p>
         ) : (
           <ul className="mt-2 space-y-2">
             {history.map((s) => (
               <li key={s.id}>
-                <Card className="flex flex-wrap items-center justify-between gap-2 p-3">
+                <GlassPanel className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <div>
-                    <p className="text-sm font-medium">
+                    <p className="t-body font-medium">
                       {s.createdAt ? formatDayLabel(s.createdAt.slice(0, 10)) : 'Scan'} ·{' '}
-                      {s.itemCount} item{s.itemCount === 1 ? '' : 's'}
+                      <span className="t-numeral">{s.itemCount}</span> item{s.itemCount === 1 ? '' : 's'}
                     </p>
                     <div className="mt-1">
-                      <Badge
+                      <LuxBadge
                         tone={
                           s.status === 'confirmed'
-                            ? 'green'
+                            ? 'success'
                             : s.status === 'review'
-                              ? 'amber'
+                              ? 'warning'
                               : s.status === 'failed'
-                                ? 'red'
-                                : undefined
+                                ? 'error'
+                                : 'neutral'
                         }
                       >
                         {s.status}
-                      </Badge>
+                      </LuxBadge>
                     </div>
                   </div>
                   {s.status === 'review' && (
-                    <Button
-                      type="button"
-                      className="min-h-[44px]"
+                    <LuxButton
+                      variant="secondary"
                       onClick={() => reviewScan(s)}
                       aria-label={`Review scan from ${s.createdAt ?? s.id}`}
                     >
                       Review
-                    </Button>
+                    </LuxButton>
                   )}
-                </Card>
+                </GlassPanel>
               </li>
             ))}
           </ul>

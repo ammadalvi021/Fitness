@@ -3,16 +3,14 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { Check, ChefHat, SearchX } from 'lucide-react';
+import { Input, Select, Skeleton } from '@/components/ui';
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  PageHeader,
-  Select,
-  Skeleton,
-} from '@/components/ui';
+  EmptyStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+} from '@/components/luxury';
 import { num, unwrapList } from '../nutrition/_shared';
 
 /* ---------- shapes ---------- */
@@ -165,14 +163,22 @@ export default function RecipesPage() {
     q.trim() !== '' || cuisine !== '' || diet !== 'any' || tags.length > 0 || maxKcal !== '' || maxTime !== '';
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 pb-24">
-      <PageHeader title="Recipes" subtitle="Find something good to cook" />
+    <div className="anim-page-enter mx-auto max-w-5xl space-y-6 p-4 pb-24">
+      <div className="mb-2">
+        <h1 className="t-page-title flex items-center gap-3">
+          <ChefHat size={26} aria-hidden="true" style={{ color: 'var(--accent)' }} />
+          Recipes
+        </h1>
+        <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+          Find something good to cook
+        </p>
+      </div>
 
       {/* ------- filters ------- */}
-      <Card className="p-4">
+      <GlassPanel className="p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <label htmlFor="rq" className="block text-sm font-medium">
+            <label htmlFor="rq" className="t-body block font-medium">
               Search
             </label>
             <Input
@@ -185,7 +191,7 @@ export default function RecipesPage() {
             />
           </div>
           <div>
-            <label htmlFor="rcuisine" className="block text-sm font-medium">
+            <label htmlFor="rcuisine" className="t-body block font-medium">
               Cuisine
             </label>
             <Select
@@ -203,7 +209,7 @@ export default function RecipesPage() {
             </Select>
           </div>
           <div>
-            <label htmlFor="rdiet" className="block text-sm font-medium">
+            <label htmlFor="rdiet" className="t-body block font-medium">
               Diet
             </label>
             <Select
@@ -218,7 +224,7 @@ export default function RecipesPage() {
             </Select>
           </div>
           <div>
-            <label htmlFor="rmaxkcal" className="block text-sm font-medium">
+            <label htmlFor="rmaxkcal" className="t-body block font-medium">
               Max kcal / serving
             </label>
             <Input
@@ -232,7 +238,7 @@ export default function RecipesPage() {
             />
           </div>
           <div>
-            <label htmlFor="rmaxtime" className="block text-sm font-medium">
+            <label htmlFor="rmaxtime" className="t-body block font-medium">
               Max total time (min)
             </label>
             <Input
@@ -246,68 +252,67 @@ export default function RecipesPage() {
             />
           </div>
           <div className="flex items-end">
-            <Button
-              type="button"
-              className="min-h-[44px]"
+            <LuxButton
+              variant="secondary"
               disabled={!hasFilters}
               onClick={clearFilters}
             >
               Clear filters
-            </Button>
+            </LuxButton>
           </div>
         </div>
 
-        <div className="mt-3">
-          <p className="text-sm font-medium" id="tag-label">
+        <div className="mt-4">
+          <p className="t-body font-medium" id="tag-label">
             Tags
           </p>
-          <div className="mt-1 flex flex-wrap gap-2" role="group" aria-labelledby="tag-label">
+          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="tag-label">
             {TAG_OPTIONS.map((t) => {
               const on = tags.includes(t);
               return (
-                <Button
+                <LuxButton
                   key={t}
-                  type="button"
-                  className="min-h-[44px]"
                   aria-pressed={on}
                   variant={on ? 'primary' : 'secondary'}
                   onClick={() => toggleTag(t)}
                 >
-                  {on ? '✓ ' : ''}{t}
-                </Button>
+                  {on && <Check size={15} aria-hidden="true" />}
+                  {t}
+                </LuxButton>
               );
             })}
           </div>
         </div>
-      </Card>
+      </GlassPanel>
 
       {/* ------- results ------- */}
       {loading && recipes === null ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Card key={i} className="p-4">
+            <GlassPanel key={i} className="p-4">
               <Skeleton className="h-5 w-3/4" />
               <Skeleton className="mt-2 h-4 w-1/2" />
               <Skeleton className="mt-2 h-4 w-full" />
-            </Card>
+            </GlassPanel>
           ))}
         </div>
       ) : visible.length === 0 ? (
-        <EmptyState
+        <EmptyStateLux
+          icon={<SearchX size={22} aria-hidden="true" />}
           title="No recipes match"
           message="Try widening your search or clearing some filters."
           action={
             hasFilters ? (
-              <Button type="button" className="min-h-[44px]" onClick={clearFilters}>
+              <LuxButton variant="secondary" onClick={clearFilters}>
                 Clear filters
-              </Button>
+              </LuxButton>
             ) : undefined
           }
         />
       ) : (
         <>
-          <p className="text-sm text-neutral-500" aria-live="polite">
-            {visible.length} recipe{visible.length === 1 ? '' : 's'}
+          <p className="t-body" style={{ color: 'var(--text-secondary)' }} aria-live="polite">
+            <span className="t-numeral">{visible.length}</span> recipe{visible.length === 1 ? '' : 's'}
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((r) => {
@@ -316,33 +321,38 @@ export default function RecipesPage() {
                 <Link
                   key={r.id}
                   href={`/recipes/${encodeURIComponent(r.slug)}`}
-                  className="block min-h-[44px] rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  className="block min-h-[44px] rounded-2xl focus:outline-none focus-visible:ring-2"
+                  style={{ ['--tw-ring-color' as string]: 'var(--accent)' }}
                   aria-label={`View recipe: ${r.title}`}
                 >
-                  <Card className="h-full p-4 transition-shadow hover:shadow-md">
+                  <GlassPanel className="anim-hover-lift h-full p-5">
                     <div className="flex flex-wrap gap-1">
                       {r.verified ? (
-                        <Badge tone="green">Verified</Badge>
+                        <LuxBadge tone="success">Verified</LuxBadge>
                       ) : r.source === 'curated' ? (
-                        <Badge>Curated</Badge>
+                        <LuxBadge>Curated</LuxBadge>
                       ) : null}
-                      {isAi && <Badge tone="blue">AI-generated</Badge>}
-                      {r.dietCategory === 'vegetarian' && <Badge tone="green">Vegetarian</Badge>}
+                      {isAi && <LuxBadge tone="accent">AI-generated</LuxBadge>}
+                      {r.dietCategory === 'vegetarian' && <LuxBadge tone="success">Vegetarian</LuxBadge>}
                     </div>
-                    <h2 className="mt-2 font-semibold leading-snug">{r.title}</h2>
-                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                      {r.cuisine ?? 'Various'} · {Math.round(r.kcalPerServing)} kcal/serving
+                    <h2 className="t-card-heading mt-2 leading-snug">{r.title}</h2>
+                    <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      {r.cuisine ?? 'Various'} · <span className="t-numeral">{Math.round(r.kcalPerServing)}</span> kcal/serving
                       {isAi && ' (estimate)'}
-                      {totalTime(r) > 0 ? ` · ${totalTime(r)} min` : ''}
+                      {totalTime(r) > 0 ? (
+                        <>
+                          {' '}· <span className="t-numeral">{totalTime(r)}</span> min
+                        </>
+                      ) : ''}
                     </p>
                     {r.tags.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {r.tags.slice(0, 4).map((t) => (
-                          <Badge key={t}>{t}</Badge>
+                          <LuxBadge key={t}>{t}</LuxBadge>
                         ))}
                       </div>
                     )}
-                  </Card>
+                  </GlassPanel>
                 </Link>
               );
             })}

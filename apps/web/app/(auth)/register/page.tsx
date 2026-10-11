@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
-import { Button, Field, Input } from "@/components/ui";
+import { Field, Input } from "@/components/ui";
+import { LuxButton } from "@/components/luxury";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -38,16 +39,23 @@ export default function RegisterPage() {
 
   return (
     <>
-      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-        Create your account
-      </h1>
-      <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+      <h1 className="t-card-heading text-2xl">Create your account</h1>
+      <p className="mt-1 text-sm text-[var(--text-secondary)]">
         Free to start — no credit card required.
       </p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         {error && (
-          <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <p
+            role="alert"
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              color: "var(--error)",
+              backgroundColor:
+                "color-mix(in srgb, var(--error) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--error) 38%, transparent)",
+            }}
+          >
             {error}
           </p>
         )}
@@ -89,14 +97,14 @@ export default function RegisterPage() {
             placeholder="Choose a strong password"
           />
         </Field>
-        <Button type="submit" size="lg" className="w-full" disabled={loading}>
+        <LuxButton type="submit" className="w-full" disabled={loading}>
           {loading ? "Creating account…" : "Create account"}
-        </Button>
+        </LuxButton>
       </form>
 
-      <p className="mt-6 text-center text-sm text-neutral-600 dark:text-neutral-400">
+      <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-brand hover:underline">
+        <Link href="/login" className="font-medium text-[var(--accent)] hover:underline">
           Sign in
         </Link>
       </p>

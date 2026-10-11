@@ -2,14 +2,114 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Brand CSS variables (defaults; JS may override via brandingCssVariables). */
+/* ==========================================================================
+   FitFusion AI — luxury design system tokens
+   --------------------------------------------------------------------------
+   Five themes are driven by `data-theme` on <html> (set by the no-flash
+   inline script + ThemeProvider). The three dark themes also carry the
+   `dark` class so every existing `dark:` Tailwind variant keeps working.
+   `system` is never a token set: it resolves at runtime to obsidian-gold
+   (device dark) or light-luxe (device light).
+   ========================================================================== */
+
 :root {
-  --brand-primary: #16a34a;
-  --brand-primary-dark: #15803d;
-  --brand-accent: #f59e0b;
-  --brand-success: #22c55e;
-  --brand-warning: #f59e0b;
-  --brand-danger: #ef4444;
+  /* ---- obsidian-gold (default dark luxury theme) ---- */
+  --bg: #090b0f;
+  --bg-elevated: #11151c;
+  --bg-secondary: #171c25;
+  --accent: #d6b36a;
+  --accent-muted: #a98745;
+  --gold: var(--accent);
+  --gold-muted: var(--accent-muted);
+  --text: #f5f2ea;
+  --text-secondary: #a8b0bc; /* ~9:1 on #090B0F — passes WCAG AA */
+  --on-accent: #0b0d11;
+  --border: rgba(214, 179, 106, 0.18);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --error: #f87171;
+
+  /* Brand variables keep working: they map onto luxury tokens by default.
+     NOTE: layout.tsx sets --brand-* inline on <body> from the branding
+     config, which overrides these defaults (unchanged behavior). */
+  --brand-primary: var(--accent);
+  --brand-primary-dark: var(--accent-muted);
+  --brand-accent: var(--accent);
+  --brand-success: var(--success);
+  --brand-warning: var(--warning);
+  --brand-danger: var(--error);
+}
+
+html[data-theme="midnight-emerald"] {
+  --bg: #0a0f0c;
+  --bg-elevated: #0f1512;
+  --bg-secondary: #141d17;
+  --accent: #34d399; /* restrained desaturated emerald */
+  --accent-muted: #1e8f68;
+  --gold: var(--accent);
+  --gold-muted: var(--accent-muted);
+  --text: #eef4f1;
+  --text-secondary: #a3b3ac; /* ~9:1 on #0A0F0C — passes WCAG AA */
+  --on-accent: #08110c;
+  --border: rgba(52, 211, 153, 0.16);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --error: #f87171;
+
+  --brand-primary: var(--accent);
+  --brand-primary-dark: var(--accent-muted);
+  --brand-accent: var(--accent);
+  --brand-success: var(--success);
+  --brand-warning: var(--warning);
+  --brand-danger: var(--error);
+}
+
+html[data-theme="slate-silver"] {
+  --bg: #0f1216;
+  --bg-elevated: #161b21;
+  --bg-secondary: #1c232b;
+  --accent: #c0c7d1;
+  --accent-muted: #8b95a3;
+  --gold: var(--accent);
+  --gold-muted: var(--accent-muted);
+  --text: #f2f4f7;
+  --text-secondary: #a8b0bc; /* ~8.6:1 on #0F1216 — passes WCAG AA */
+  --on-accent: #101318;
+  --border: rgba(192, 199, 209, 0.16);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --error: #f87171;
+
+  --brand-primary: var(--accent);
+  --brand-primary-dark: var(--accent-muted);
+  --brand-accent: var(--accent);
+  --brand-success: var(--success);
+  --brand-warning: var(--warning);
+  --brand-danger: var(--error);
+}
+
+html[data-theme="light-luxe"] {
+  --bg: #faf8f3;
+  --bg-elevated: #ffffff;
+  --bg-secondary: #f1ede3;
+  --accent: #a98745; /* deeper gold — readable on warm white */
+  --accent-muted: #7a6234;
+  --gold: var(--accent);
+  --gold-muted: var(--accent-muted);
+  --text: #1c1b18;
+  --text-secondary: #5c5a54; /* ~6.3:1 on #FAF8F3 — passes WCAG AA */
+  --on-accent: #1c1b18;
+  --border: rgba(169, 135, 69, 0.28);
+  --success: #15803d;
+  --warning: #b45309;
+  --error: #dc2626;
+
+  --brand-primary: var(--accent);
+  --brand-primary-dark: var(--accent-muted);
+  --brand-accent: var(--accent);
+  --brand-success: var(--success);
+  --brand-warning: var(--warning);
+  --brand-danger: var(--error);
 }
 
 @layer base {
@@ -18,20 +118,24 @@
   }
 
   body {
-    @apply bg-neutral-50 text-neutral-900 antialiased;
+    @apply antialiased;
+    background-color: var(--bg);
+    color: var(--text);
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
       "Helvetica Neue", Arial, sans-serif;
   }
 
-  .dark body {
-    @apply bg-neutral-950 text-neutral-100;
-  }
-
-  /* Visible focus for keyboard users everywhere. */
+  /* Visible focus for keyboard users everywhere: gold ring on any theme. */
   :focus-visible {
-    outline: 2px solid var(--brand-primary);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     border-radius: 4px;
+  }
+
+  /* Subtle gold selection on any theme. */
+  ::selection {
+    background: rgba(214, 179, 106, 0.32);
+    color: inherit;
   }
 
   /* Skip link: hidden until focused. */
@@ -50,18 +154,143 @@
     width: auto;
     height: auto;
     padding: 0.75rem 1.25rem;
-    background: var(--brand-primary);
-    color: #fff;
+    background: var(--accent);
+    color: var(--on-accent);
     border-radius: 0.75rem;
     z-index: 100;
     font-weight: 600;
-    outline: 2px solid #fff;
+    outline: 2px solid var(--text);
   }
 }
 
+/* ==========================================================================
+   Typography (system stack only)
+   ========================================================================== */
+
 @layer components {
+  .t-greeting {
+    font-size: 2rem;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .t-page-title {
+    font-size: 1.5rem;
+    line-height: 1.25;
+    letter-spacing: -0.005em;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .t-card-heading {
+    font-size: 1.05rem;
+    line-height: 1.35;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .t-body {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  .t-meta {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .t-numeral {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    color: var(--text);
+  }
+
   /* Minimum 44px touch target for mobile interactions. */
   .touch-target {
     min-height: 44px;
+  }
+}
+
+/* ==========================================================================
+   Motion primitives (only when the user has not asked for reduced motion)
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  .anim-page-enter {
+    animation: lux-page-enter 200ms ease-out both;
+  }
+
+  .anim-hover-lift {
+    transition:
+      transform 160ms ease-out,
+      box-shadow 160ms ease-out;
+  }
+
+  .anim-hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 10px 28px -12px rgba(0, 0, 0, 0.45),
+      0 0 0 1px var(--border);
+  }
+
+  .anim-press {
+    transition: transform 120ms ease-out;
+  }
+
+  .anim-press:active {
+    transform: scale(0.95);
+  }
+
+  .anim-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--bg-secondary);
+  }
+
+  .anim-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.06),
+      transparent
+    );
+    animation: lux-shimmer 1.8s ease-in-out infinite;
+  }
+}
+
+@keyframes lux-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lux-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Honor reduced-motion requests globally: kill animations/transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -1,26 +1,27 @@
 import Link from "next/link";
 import { branding } from "@/lib/site";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { ThemeSelector } from "@/components/ThemeSelector";
+import { GlassPanel } from "@/components/luxury";
 
-/** Centered auth shell: logo, card container, back-to-home link. */
+/** Centered auth shell: logo, glass card, back-to-home link. */
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-950">
+    <div className="flex min-h-screen flex-col bg-[var(--bg)]">
       <header className="flex items-center justify-between px-4 py-4">
         <Link href="/" aria-label={`${branding.appName} home`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={branding.logoPath} alt={branding.appName} className="h-9" />
         </Link>
-        <ThemeToggle />
+        <ThemeSelector compact />
       </header>
-      <main className="flex flex-1 items-center justify-center px-4 pb-12">
-        <div className="w-full max-w-md rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 sm:p-8">
+      <main className="anim-page-enter flex flex-1 items-center justify-center px-4 pb-12">
+        <GlassPanel className="w-full max-w-md p-6 sm:p-8">
           {children}
-        </div>
+        </GlassPanel>
       </main>
     </div>
   );

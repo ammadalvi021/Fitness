@@ -4,17 +4,24 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  Modal,
-  PageHeader,
-  Select,
-  Skeleton,
-  Stat,
-} from '@/components/ui';
+  AlertTriangle,
+  BookOpen,
+  Check,
+  Clock,
+  Copy,
+  Download,
+  Heart,
+  ShoppingCart,
+  Star,
+} from 'lucide-react';
+import { Input, Modal, Select, Skeleton } from '@/components/ui';
+import {
+  EmptyStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+  MetricCard,
+} from '@/components/luxury';
 import {
   allergenHits,
   formatDayLabel,
@@ -401,8 +408,12 @@ export default function RecipeDetailPage() {
 
   if (loadError) {
     return (
-      <div className="mx-auto max-w-3xl p-4 pb-24">
-        <EmptyState title="Recipe not found" message={loadError} />
+      <div className="anim-page-enter mx-auto max-w-3xl p-4 pb-24">
+        <EmptyStateLux
+          icon={<BookOpen size={22} aria-hidden="true" />}
+          title="Recipe not found"
+          message={loadError}
+        />
       </div>
     );
   }
@@ -419,13 +430,25 @@ export default function RecipeDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-4 pb-24">
-      <PageHeader title={recipe.title} subtitle={recipe.cuisine ?? undefined} />
+    <div className="anim-page-enter mx-auto max-w-3xl space-y-6 p-4 pb-24">
+      <div className="mb-2">
+        <h1 className="t-page-title">{recipe.title}</h1>
+        {recipe.cuisine && (
+          <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+            {recipe.cuisine}
+          </p>
+        )}
+      </div>
 
       {error && (
         <div
           role="alert"
-          className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+          className="rounded-xl border p-3 text-sm"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+            color: 'var(--text)',
+          }}
         >
           {error}
         </div>
@@ -435,29 +458,35 @@ export default function RecipeDetailPage() {
       {allergenHitsAll.length > 0 && (
         <div
           role="alert"
-          className="rounded-lg border-2 border-red-400 bg-red-50 p-4 text-sm text-red-900 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
+          className="rounded-xl border p-4"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--error) 60%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+            color: 'var(--text)',
+          }}
         >
-          <p className="font-bold">
-            ⚠ Contains your allergen{allergenHitsAll.length > 1 ? 's' : ''}: {allergenHitsAll.join(', ')}
+          <p className="t-body flex items-center gap-2 font-bold">
+            <AlertTriangle size={18} aria-hidden="true" style={{ color: 'var(--error)' }} />
+            Contains your allergen{allergenHitsAll.length > 1 ? 's' : ''}: {allergenHitsAll.join(', ')}
           </p>
-          <p className="mt-1">
+          <p className="t-body mt-1">
             This recipe is shown as-is — nothing has been substituted. Please choose a different
             recipe if this isn&apos;t safe for you.
           </p>
         </div>
       )}
 
-      <Card className="p-4">
+      <GlassPanel className="p-6">
         <div className="flex flex-wrap gap-1">
           {recipe.verified ? (
-            <Badge tone="green">Verified</Badge>
+            <LuxBadge tone="success">Verified</LuxBadge>
           ) : recipe.source === 'curated' ? (
-            <Badge>Curated</Badge>
+            <LuxBadge>Curated</LuxBadge>
           ) : null}
-          {isAi && <Badge tone="blue">AI-generated</Badge>}
-          {recipe.dietCategory === 'vegetarian' && <Badge tone="green">Vegetarian</Badge>}
-          {recipe.dietCategory === 'non_vegetarian' && <Badge>Non-vegetarian</Badge>}
-          {recipe.difficulty && <Badge>{recipe.difficulty}</Badge>}
+          {isAi && <LuxBadge tone="accent">AI-generated</LuxBadge>}
+          {recipe.dietCategory === 'vegetarian' && <LuxBadge tone="success">Vegetarian</LuxBadge>}
+          {recipe.dietCategory === 'non_vegetarian' && <LuxBadge>Non-vegetarian</LuxBadge>}
+          {recipe.difficulty && <LuxBadge>{recipe.difficulty}</LuxBadge>}
         </div>
 
         {recipe.imageUrl && (
@@ -465,39 +494,45 @@ export default function RecipeDetailPage() {
           <img
             src={recipe.imageUrl}
             alt={recipe.title}
-            className="mt-3 max-h-72 w-full rounded-lg object-cover"
+            className="mt-3 max-h-72 w-full rounded-2xl object-cover"
+            style={{ border: '1px solid var(--border)' }}
           />
         )}
 
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Per serving" value={`${Math.round(recipe.perServing.kcal)} kcal`} sub={isAi ? 'estimate' : undefined} />
-          <Stat label="Prep" value={`${recipe.prepMin} min`} />
-          <Stat label="Cook" value={`${recipe.cookMin} min`} />
-          <div>
-            <label htmlFor="servings" className="block text-sm font-medium text-neutral-500">
-              Servings
-            </label>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <MetricCard label="Per serving" value={<span className="t-numeral">{Math.round(recipe.perServing.kcal)} kcal</span>} subtext={isAi ? 'estimate' : undefined} />
+          <MetricCard label="Prep" value={<span className="t-numeral">{recipe.prepMin} min</span>} />
+          <MetricCard label="Cook" value={<span className="t-numeral">{recipe.cookMin} min</span>} />
+          <GlassPanel className="p-5">
+            <p className="t-meta">Servings</p>
             <Input
               id="servings"
               type="number"
               min={0.25}
               step={0.25}
+              aria-label="Servings"
               value={String(servings)}
               onChange={(e) => setServings(Math.max(0.25, num(e.target.value, 1)))}
-              className="min-h-[44px] w-24"
+              className="mt-2 min-h-[44px] w-24"
             />
-          </div>
+          </GlassPanel>
         </div>
 
         {scaled && (
-          <div className="mt-3 rounded-lg bg-neutral-100 p-3 text-sm dark:bg-neutral-800">
-            <p className="font-semibold">
-              Nutrition for {round1(Math.max(0.25, servings))} serving{servings === 1 ? '' : 's'}
-              {isAi && <span className="font-normal text-neutral-500"> — AI estimates</span>}
+          <div
+            className="mt-4 rounded-xl border p-4"
+            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
+          >
+            <p className="t-body font-semibold">
+              Nutrition for <span className="t-numeral">{round1(Math.max(0.25, servings))}</span> serving{servings === 1 ? '' : 's'}
+              {isAi && <span className="t-meta"> — AI estimates</span>}
             </p>
-            <p className="mt-1 text-neutral-700 dark:text-neutral-300">
-              {Math.round(scaled.kcal)} kcal · Protein {round1(scaled.proteinG)} g · Carbs{' '}
-              {round1(scaled.carbsG)} g · Fat {round1(scaled.fatG)} g · Fiber {round1(scaled.fiberG)} g
+            <p className="t-body mt-1">
+              <span className="t-numeral">{Math.round(scaled.kcal)}</span> kcal · Protein{' '}
+              <span className="t-numeral">{round1(scaled.proteinG)}</span> g · Carbs{' '}
+              <span className="t-numeral">{round1(scaled.carbsG)}</span> g · Fat{' '}
+              <span className="t-numeral">{round1(scaled.fatG)}</span> g · Fiber{' '}
+              <span className="t-numeral">{round1(scaled.fiberG)}</span> g
             </p>
           </div>
         )}
@@ -505,60 +540,75 @@ export default function RecipeDetailPage() {
         {recipe.tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1">
             {recipe.tags.map((t) => (
-              <Badge key={t}>{t}</Badge>
+              <LuxBadge key={t}>{t}</LuxBadge>
             ))}
           </div>
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            className="min-h-[44px]"
+          <LuxButton
+            variant="secondary"
             disabled={favBusy}
             onClick={() => void toggleFavorite()}
             aria-pressed={favorited}
             aria-label={favorited ? 'Remove from favorites' : 'Add to favorites'}
           >
-            {favBusy ? '…' : favorited ? '★ Favorited' : '☆ Favorite'}
-          </Button>
-          <Button type="button" className="min-h-[44px]" onClick={() => { setLogDone(false); setLogOpen(true); }}>
+            {favBusy ? (
+              '…'
+            ) : favorited ? (
+              <>
+                <Star size={16} aria-hidden="true" style={{ color: 'var(--accent)', fill: 'var(--accent)' }} />
+                Favorited
+              </>
+            ) : (
+              <>
+                <Heart size={16} aria-hidden="true" />
+                Favorite
+              </>
+            )}
+          </LuxButton>
+          <LuxButton onClick={() => { setLogDone(false); setLogOpen(true); }}>
             Log to diary
-          </Button>
-          <Button type="button" className="min-h-[44px]" onClick={() => setShopOpen(true)}>
+          </LuxButton>
+          <LuxButton variant="secondary" onClick={() => setShopOpen(true)}>
+            <ShoppingCart size={16} aria-hidden="true" />
             Shopping list
-          </Button>
-          <Button type="button" className="min-h-[44px]" onClick={() => void openPlanPicker()}>
+          </LuxButton>
+          <LuxButton variant="secondary" onClick={() => void openPlanPicker()}>
             Add to meal plan
-          </Button>
+          </LuxButton>
         </div>
-      </Card>
+      </GlassPanel>
 
       {/* ------- ingredients ------- */}
-      <Card className="p-4">
-        <h2 className="text-lg font-semibold">Ingredients</h2>
+      <GlassPanel className="p-6">
+        <h2 className="t-card-heading">Ingredients</h2>
         {recipe.ingredients.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-500">No ingredient list provided.</p>
+          <p className="t-body mt-2" style={{ color: 'var(--text-secondary)' }}>
+            No ingredient list provided.
+          </p>
         ) : (
           <ul className="mt-2 space-y-2">
             {recipe.ingredients.map((ing, i) => {
               const hit = allergenHits([ing.name], allergies);
               return (
-                <li key={i} className="flex items-start justify-between gap-2 text-sm">
+                <li key={i} className="t-body flex items-start justify-between gap-2">
                   <div>
                     <span className="font-medium">{ing.name}</span>
-                    {ing.quantity && <span className="text-neutral-500"> — {ing.quantity}</span>}
+                    {ing.quantity && <span style={{ color: 'var(--text-secondary)' }}> — {ing.quantity}</span>}
                     {ing.grams != null && (
-                      <span className="block text-xs text-neutral-500">
-                        ≈ {Math.round(ing.grams * factor)} g for {round1(Math.max(0.25, servings))} servings
+                      <span className="t-meta block">
+                        ≈ <span className="t-numeral">{Math.round(ing.grams * factor)}</span> g for{' '}
+                        <span className="t-numeral">{round1(Math.max(0.25, servings))}</span> servings
                       </span>
                     )}
                     {hit.length > 0 && (
                       <span className="mt-1 block">
-                        <Badge tone="red">Your allergen: {hit.join(', ')}</Badge>
+                        <LuxBadge tone="error">Your allergen: {hit.join(', ')}</LuxBadge>
                       </span>
                     )}
                     {ing.substitutions && ing.substitutions.length > 0 && (
-                      <span className="block text-xs text-neutral-500">
+                      <span className="t-meta block">
                         Swap: {ing.substitutions.join('; ')}
                       </span>
                     )}
@@ -568,34 +618,39 @@ export default function RecipeDetailPage() {
             })}
           </ul>
         )}
-      </Card>
+      </GlassPanel>
 
       {/* ------- instructions ------- */}
-      <Card className="p-4">
-        <h2 className="text-lg font-semibold">Instructions</h2>
+      <GlassPanel className="p-6">
+        <h2 className="t-card-heading flex items-center gap-2">
+          <BookOpen size={18} aria-hidden="true" style={{ color: 'var(--accent)' }} />
+          Instructions
+        </h2>
         {recipe.instructions.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-500">No instructions provided.</p>
+          <p className="t-body mt-2" style={{ color: 'var(--text-secondary)' }}>
+            No instructions provided.
+          </p>
         ) : (
-          <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm">
+          <ol className="t-body mt-2 list-decimal space-y-2 pl-5">
             {recipe.instructions.map((s, i) => (
               <li key={i}>{s}</li>
             ))}
           </ol>
         )}
-      </Card>
+      </GlassPanel>
 
       {/* ------- substitutions / storage (only when provided) ------- */}
       {recipe.substitutions && (
-        <Card className="p-4">
-          <h2 className="text-lg font-semibold">Substitutions</h2>
+        <GlassPanel className="p-6">
+          <h2 className="t-card-heading">Substitutions</h2>
           {Array.isArray(recipe.substitutions) ? (
-            <ul className="mt-2 list-disc pl-5 text-sm">
+            <ul className="t-body mt-2 list-disc pl-5">
               {recipe.substitutions.map((s, i) => (
                 <li key={i}>{String(s)}</li>
               ))}
             </ul>
           ) : (
-            <ul className="mt-2 list-disc pl-5 text-sm">
+            <ul className="t-body mt-2 list-disc pl-5">
               {Object.entries(recipe.substitutions).map(([k, v]) => (
                 <li key={k}>
                   Instead of {k}: {String(v)}
@@ -603,42 +658,51 @@ export default function RecipeDetailPage() {
               ))}
             </ul>
           )}
-        </Card>
+        </GlassPanel>
       )}
 
       {(recipe.storage || recipe.reheating) && (
-        <Card className="p-4">
-          <h2 className="text-lg font-semibold">Storage & reheating</h2>
-          {recipe.storage && <p className="mt-2 text-sm"><strong>Storage:</strong> {recipe.storage}</p>}
-          {recipe.reheating && <p className="mt-1 text-sm"><strong>Reheating:</strong> {recipe.reheating}</p>}
-        </Card>
+        <GlassPanel className="p-6">
+          <h2 className="t-card-heading">Storage & reheating</h2>
+          {recipe.storage && <p className="t-body mt-2"><strong>Storage:</strong> {recipe.storage}</p>}
+          {recipe.reheating && <p className="t-body mt-1"><strong>Reheating:</strong> {recipe.reheating}</p>}
+        </GlassPanel>
       )}
 
-      {/* ------- log modal ------- */}
+      {/* ------- log modal (existing Modal — focus behavior preserved) ------- */}
       <Modal open={logOpen} onClose={() => setLogOpen(false)} title={`Log “${recipe.title}”`}>
         {logDone ? (
           <div role="status" className="space-y-3">
-            <p className="text-sm">
+            <p className="t-body">
               Logged for {formatDayLabel(logDate)} · {mealLabel(logMeal)}.
             </p>
-            <Button type="button" className="min-h-[44px]" onClick={() => setLogOpen(false)}>
+            <LuxButton onClick={() => setLogOpen(false)}>
+              <Check size={16} aria-hidden="true" />
               Done
-            </Button>
+            </LuxButton>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              {round1(Math.max(0.25, servings))} serving{servings === 1 ? '' : 's'} ·{' '}
-              {scaled ? Math.round(scaled.kcal) : 0} kcal{isAi ? ' (estimate)' : ''}.
+            <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
+              <span className="t-numeral">{round1(Math.max(0.25, servings))}</span> serving{servings === 1 ? '' : 's'} ·{' '}
+              <span className="t-numeral">{scaled ? Math.round(scaled.kcal) : 0}</span> kcal{isAi ? ' (estimate)' : ''}.
             </p>
             {allergenHitsAll.length > 0 && (
-              <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+              <div
+                role="alert"
+                className="rounded-xl border p-2 text-xs"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+                  backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+                  color: 'var(--text)',
+                }}
+              >
                 Contains your allergen{allergenHitsAll.length > 1 ? 's' : ''}: {allergenHitsAll.join(', ')}.
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label htmlFor="log-date" className="block text-sm font-medium">
+                <label htmlFor="log-date" className="t-body block font-medium">
                   Date
                 </label>
                 <Input
@@ -651,7 +715,7 @@ export default function RecipeDetailPage() {
                 />
               </div>
               <div>
-                <label htmlFor="log-meal" className="block text-sm font-medium">
+                <label htmlFor="log-meal" className="t-body block font-medium">
                   Meal
                 </label>
                 <Select
@@ -668,34 +732,38 @@ export default function RecipeDetailPage() {
                 </Select>
               </div>
             </div>
-            <Button
-              type="button"
-              className="min-h-[44px] w-full"
+            <LuxButton
+              className="w-full"
               disabled={logBusy}
               onClick={() => void handleLog()}
             >
               {logBusy ? 'Logging…' : 'Log to diary'}
-            </Button>
+            </LuxButton>
           </div>
         )}
       </Modal>
 
       {/* ------- shopping list modal ------- */}
       <Modal open={shopOpen} onClose={() => setShopOpen(false)} title="Shopping list">
-        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+        <p className="t-meta">
           Quantities follow your serving choice above. Merge this into your week&apos;s list on the
           meal-plan page.
         </p>
-        <pre className="mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap rounded-lg bg-neutral-100 p-3 text-sm dark:bg-neutral-800">
+        <pre
+          className="mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap rounded-xl border p-3 text-sm"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)', color: 'var(--text)' }}
+        >
           {shoppingText}
         </pre>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button type="button" className="min-h-[44px]" onClick={() => void copyShopping()}>
-            {copied ? 'Copied ✓' : 'Copy list'}
-          </Button>
-          <Button type="button" className="min-h-[44px]" onClick={downloadShopping}>
+          <LuxButton variant="secondary" onClick={() => void copyShopping()}>
+            <Copy size={16} aria-hidden="true" />
+            {copied ? 'Copied' : 'Copy list'}
+          </LuxButton>
+          <LuxButton variant="secondary" onClick={downloadShopping}>
+            <Download size={16} aria-hidden="true" />
             Download .txt
-          </Button>
+          </LuxButton>
         </div>
       </Modal>
 
@@ -703,34 +771,33 @@ export default function RecipeDetailPage() {
       <Modal open={planOpen} onClose={() => setPlanOpen(false)} title="Add to meal plan">
         {planDone ? (
           <div role="status" className="space-y-3">
-            <p className="text-sm">
+            <p className="t-body">
               Added to your plan (saved on this device — see it on the meal-plan page).
             </p>
-            <Button type="button" className="min-h-[44px]" onClick={() => setPlanOpen(false)}>
+            <LuxButton onClick={() => setPlanOpen(false)}>
+              <Check size={16} aria-hidden="true" />
               Done
-            </Button>
+            </LuxButton>
           </div>
         ) : planOptions === null ? (
           <Skeleton className="h-16 w-full" />
         ) : planOptions.length === 0 ? (
           <div className="space-y-3">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
               You don&apos;t have a meal plan yet. Generate one first, then add this recipe to any day.
             </p>
-            <Button
-              type="button"
-              className="min-h-[44px]"
+            <LuxButton
               onClick={() => {
                 window.location.href = '/nutrition/plans';
               }}
             >
               Go to meal plans
-            </Button>
+            </LuxButton>
           </div>
         ) : (
           <div className="space-y-3">
             <div>
-              <label htmlFor="plan-choice" className="block text-sm font-medium">
+              <label htmlFor="plan-choice" className="t-body block font-medium">
                 Plan
               </label>
               <Select
@@ -748,7 +815,7 @@ export default function RecipeDetailPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="plan-day" className="block text-sm font-medium">
+                <label htmlFor="plan-day" className="t-body block font-medium">
                   Day
                 </label>
                 <Select
@@ -765,7 +832,7 @@ export default function RecipeDetailPage() {
                 </Select>
               </div>
               <div>
-                <label htmlFor="plan-meal" className="block text-sm font-medium">
+                <label htmlFor="plan-meal" className="t-body block font-medium">
                   Meal slot
                 </label>
                 <Select
@@ -783,16 +850,29 @@ export default function RecipeDetailPage() {
               </div>
             </div>
             {allergenHitsAll.length > 0 && (
-              <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+              <div
+                role="alert"
+                className="rounded-xl border p-2 text-xs"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+                  backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+                  color: 'var(--text)',
+                }}
+              >
                 Contains your allergen{allergenHitsAll.length > 1 ? 's' : ''}: {allergenHitsAll.join(', ')}.
               </div>
             )}
-            <Button type="button" className="min-h-[44px] w-full" onClick={addToPlan}>
+            <LuxButton className="w-full" onClick={addToPlan}>
               Add to plan
-            </Button>
+            </LuxButton>
           </div>
         )}
       </Modal>
+
+      <p className="t-meta flex items-center gap-1.5">
+        <Clock size={13} aria-hidden="true" />
+        Prep and cook times are as published by the recipe source.
+      </p>
     </div>
   );
 }

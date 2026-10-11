@@ -3,16 +3,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Input,
-  PageHeader,
-  Select,
-  Skeleton,
-  Stat,
-} from '@/components/ui';
+  ArrowLeftRight,
+  CalendarDays,
+  Check,
+  Info,
+  RefreshCw,
+  ShoppingCart,
+  Sparkles,
+  UtensilsCrossed,
+} from 'lucide-react';
+import { Input, Select, Skeleton } from '@/components/ui';
+import {
+  EmptyStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+  MetricCard,
+} from '@/components/luxury';
 import {
   scaleNutrients,
   sumNutrients,
@@ -491,48 +498,58 @@ export default function MealPlansPage() {
   /* ---------------- render ---------------- */
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 pb-24">
-      <PageHeader
-        title="Meal plans"
-        subtitle="A week of eating, planned around your targets"
-        actions={
-          plans && plans.length > 1 ? (
-            <Select
-              aria-label="Choose meal plan"
-              value={planId ?? ''}
-              onChange={(e) => {
-                setPlanId(e.target.value);
-                setActiveDay(0);
-                setView('plan');
-                setAdditions(readAdditions(e.target.value));
-              }}
-              className="min-h-[44px]"
-            >
-              {plans.map((p) => (
-                <option key={p.id} value={p.id}>
-                  Week of {formatDayLabel(p.weekStart)} ({p.generatedBy})
-                </option>
-              ))}
-            </Select>
-          ) : undefined
-        }
-      />
+    <div className="anim-page-enter mx-auto max-w-4xl space-y-6 p-4 pb-24">
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title">Meal plans</h1>
+          <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+            A week of eating, planned around your targets
+          </p>
+        </div>
+        {plans && plans.length > 1 ? (
+          <Select
+            aria-label="Choose meal plan"
+            value={planId ?? ''}
+            onChange={(e) => {
+              setPlanId(e.target.value);
+              setActiveDay(0);
+              setView('plan');
+              setAdditions(readAdditions(e.target.value));
+            }}
+            className="min-h-[44px]"
+          >
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>
+                Week of {formatDayLabel(p.weekStart)} ({p.generatedBy})
+              </option>
+            ))}
+          </Select>
+        ) : undefined}
+      </div>
 
       {error && (
         <div
           role="alert"
-          className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+          className="rounded-xl border p-3 text-sm"
+          style={{
+            borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+            backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+            color: 'var(--text)',
+          }}
         >
           {error}
         </div>
       )}
 
       {/* ------- generate card ------- */}
-      <Card className="p-4">
-        <h2 className="font-semibold">Generate a 7-day plan</h2>
+      <GlassPanel className="p-6">
+        <h2 className="t-card-heading flex items-center gap-2">
+          <CalendarDays size={18} aria-hidden="true" style={{ color: 'var(--accent)' }} />
+          Generate a 7-day plan
+        </h2>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
-            <label htmlFor="weekStart" className="block text-sm font-medium">
+            <label htmlFor="weekStart" className="t-body block font-medium">
               Week starting
             </label>
             <Input
@@ -542,64 +559,66 @@ export default function MealPlansPage() {
               onChange={(e) => e.target.value && setWeekStart(mondayOfWeek(e.target.value))}
               className="min-h-[44px]"
             />
-            <p className="text-xs text-neutral-500">Snaps to Monday.</p>
+            <p className="t-meta">Snaps to Monday.</p>
           </div>
           <div role="radiogroup" aria-label="Plan type" className="flex gap-2">
-            <Button
-              type="button"
+            <LuxButton
               role="radio"
               aria-checked={!useAI}
               variant={!useAI ? 'primary' : 'secondary'}
-              className="min-h-[44px]"
               onClick={() => setUseAI(false)}
             >
-              Template{!useAI ? ' ✓' : ''}
-            </Button>
-            <Button
-              type="button"
+              {!useAI && <Check size={16} aria-hidden="true" />}
+              Template
+            </LuxButton>
+            <LuxButton
               role="radio"
               aria-checked={useAI}
               variant={useAI ? 'primary' : 'secondary'}
-              className="min-h-[44px]"
               onClick={() => setUseAI(true)}
             >
-              AI{useAI ? ' ✓' : ''}
-            </Button>
+              <Sparkles size={16} aria-hidden="true" />
+              AI
+              {useAI && <Check size={16} aria-hidden="true" />}
+            </LuxButton>
           </div>
-          <Button
-            type="button"
-            className="min-h-[44px]"
+          <LuxButton
             disabled={generating || (useAI && aiChecked && !aiChatConfigured)}
             onClick={() => void handleGenerate()}
           >
             {generating ? 'Generating…' : 'Generate plan'}
-          </Button>
+          </LuxButton>
         </div>
 
         {useAI && aiChecked && !aiChatConfigured && (
           <div
             role="status"
-            className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+            className="mt-4 rounded-xl border p-4"
+            style={{
+              borderColor: 'color-mix(in srgb, var(--warning) 45%, transparent)',
+              backgroundColor: 'color-mix(in srgb, var(--warning) 10%, transparent)',
+            }}
           >
-            <p className="font-semibold">AI meal plans aren&apos;t set up yet</p>
-            <p className="mt-1">
+            <p className="t-body font-semibold">AI meal plans aren&apos;t set up yet</p>
+            <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
               Template plans work right now with no setup. To enable AI-generated plans, add your AI
               provider key — see the project README (&ldquo;AI setup&rdquo;) for instructions, then
               come back here.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" className="min-h-[44px]" onClick={() => setUseAI(false)}>
+              <LuxButton variant="secondary" onClick={() => setUseAI(false)}>
                 Use template instead
-              </Button>
+              </LuxButton>
             </div>
           </div>
         )}
         {useAI && aiChecked && aiChatConfigured && (
-          <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="t-meta mt-3 flex items-center gap-1.5">
+            <Info size={13} aria-hidden="true" />
             AI-generated nutrition values are estimates, not exact measurements.
           </p>
         )}
-      </Card>
+      </GlassPanel>
 
       {plans === null ? (
         <div className="space-y-3">
@@ -607,43 +626,45 @@ export default function MealPlansPage() {
           <Skeleton className="h-40 w-full" />
         </div>
       ) : !plan ? (
-        <EmptyState
+        <EmptyStateLux
+          icon={<UtensilsCrossed size={22} aria-hidden="true" />}
           title="No meal plan yet"
           message="Generate your first 7-day plan above — template plans respect your diet preference and allergies."
         />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Plan views">
-            <Button
-              type="button"
+            <LuxButton
               role="tab"
               aria-selected={view === 'plan'}
               variant={view === 'plan' ? 'primary' : 'secondary'}
-              className="min-h-[44px]"
               onClick={() => setView('plan')}
             >
               Week plan
-            </Button>
-            <Button
-              type="button"
+            </LuxButton>
+            <LuxButton
               role="tab"
               aria-selected={view === 'shopping'}
               variant={view === 'shopping' ? 'primary' : 'secondary'}
-              className="min-h-[44px]"
               onClick={() => setView('shopping')}
             >
+              <ShoppingCart size={16} aria-hidden="true" />
               Shopping list
-            </Button>
+            </LuxButton>
             <div className="ml-auto flex items-center gap-2">
-              <Badge tone={isAi ? 'blue' : 'green'}>{isAi ? 'AI-generated' : 'Template'}</Badge>
-              {plan.calorieTarget > 0 && <Stat label="Daily target" value={`${plan.calorieTarget} kcal`} />}
+              <LuxBadge tone={isAi ? 'accent' : 'success'}>{isAi ? 'AI-generated' : 'Template'}</LuxBadge>
+              {plan.calorieTarget > 0 && (
+                <span className="t-meta">
+                  Daily target: <span className="t-numeral">{plan.calorieTarget}</span> kcal
+                </span>
+              )}
             </div>
           </div>
 
           {view === 'shopping' ? (
-            <Card className="p-4" role="tabpanel">
-              <h2 className="font-semibold">Shopping list</h2>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            <GlassPanel className="p-6" role="tabpanel">
+              <h2 className="t-card-heading">Shopping list</h2>
+              <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
                 Quantities are estimates based on the planned servings.
               </p>
               {shoppingLoading || shoppingGroups === null ? (
@@ -653,19 +674,17 @@ export default function MealPlansPage() {
                   <Skeleton className="h-4 w-full" />
                 </div>
               ) : Object.keys(shoppingGroups).length === 0 ? (
-                <EmptyState title="Nothing to buy" message="This plan has no listed ingredients." />
+                <EmptyStateLux title="Nothing to buy" message="This plan has no listed ingredients." />
               ) : (
                 <div className="mt-4 space-y-4">
                   {Object.entries(shoppingGroups).map(([category, items]) => (
                     <div key={category}>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                        {category}
-                      </h3>
-                      <ul className="mt-1 divide-y divide-neutral-200 dark:divide-neutral-700">
+                      <h3 className="t-meta uppercase">{category}</h3>
+                      <ul className="mt-1 divide-y" style={{ borderColor: 'var(--border)' }}>
                         {items.map((it, i) => (
                           <li key={`${it.name}-${i}`} className="flex justify-between gap-2 py-1.5 text-sm">
-                            <span>{it.name}</span>
-                            <span className="text-neutral-500">{it.quantity}</span>
+                            <span className="t-body">{it.name}</span>
+                            <span className="t-body" style={{ color: 'var(--text-secondary)' }}>{it.quantity}</span>
                           </li>
                         ))}
                       </ul>
@@ -673,7 +692,7 @@ export default function MealPlansPage() {
                   ))}
                 </div>
               )}
-            </Card>
+            </GlassPanel>
           ) : (
             <div role="tabpanel" className="space-y-4">
               {/* day tabs */}
@@ -683,21 +702,20 @@ export default function MealPlansPage() {
                   const { done, total } = adherenceForDay(d.dayIndex, d.meals);
                   const selected = (activeDayPlan?.dayIndex ?? 0) === d.dayIndex;
                   return (
-                    <Button
+                    <LuxButton
                       key={d.dayIndex}
-                      type="button"
                       role="tab"
                       aria-selected={selected}
                       variant={selected ? 'primary' : 'secondary'}
-                      className="min-h-[44px] min-w-[44px] flex-col px-3"
+                      className="min-w-[44px] flex-col px-3"
                       onClick={() => setActiveDay(d.dayIndex)}
                       aria-label={`${formatWeekdayLong(dd)}, ${formatDayLabel(dd)}, ${done} of ${total} meals done`}
                     >
                       <span className="text-xs">{formatWeekdayLong(dd).slice(0, 3)}</span>
-                      <span className="text-xs text-neutral-500">
-                        {done}/{total}
+                      <span className="t-meta">
+                        <span className="t-numeral">{done}</span>/<span className="t-numeral">{total}</span>
                       </span>
-                    </Button>
+                    </LuxButton>
                   );
                 })}
               </div>
@@ -705,7 +723,12 @@ export default function MealPlansPage() {
               {swapMode && (
                 <div
                   role="status"
-                  className="rounded-lg border border-sky-300 bg-sky-50 p-3 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-200"
+                  className="rounded-xl border p-3 text-sm"
+                  style={{
+                    borderColor: 'color-mix(in srgb, var(--accent) 45%, transparent)',
+                    backgroundColor: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+                    color: 'var(--text)',
+                  }}
                 >
                   Rearrange mode: tap one meal, then another (any day), to swap them. This preview is
                   kept on this device and isn&apos;t saved to the server.
@@ -716,31 +739,29 @@ export default function MealPlansPage() {
               {activeDayPlan && (
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-lg font-semibold">
+                    <h2 className="t-page-title text-xl">
                       {formatWeekdayLong(dayDate(plan.weekStart, activeDayPlan.dayIndex))}{' '}
-                      <span className="text-sm font-normal text-neutral-500">
+                      <span className="t-body font-normal" style={{ color: 'var(--text-secondary)' }}>
                         {formatDayLabel(dayDate(plan.weekStart, activeDayPlan.dayIndex))}
                       </span>
                     </h2>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        className="min-h-[44px]"
-                        aria-pressed={swapMode}
-                        onClick={() => {
-                          setSwapMode((s) => !s);
-                          setSwapPick(null);
-                        }}
-                      >
-                        {swapMode ? 'Done rearranging' : 'Rearrange meals'}
-                      </Button>
-                    </div>
+                    <LuxButton
+                      variant="secondary"
+                      aria-pressed={swapMode}
+                      onClick={() => {
+                        setSwapMode((s) => !s);
+                        setSwapPick(null);
+                      }}
+                    >
+                      <ArrowLeftRight size={16} aria-hidden="true" />
+                      {swapMode ? 'Done rearranging' : 'Rearrange meals'}
+                    </LuxButton>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-3">
-                    <Stat label="Day total" value={`${Math.round(activeDayPlan.totals.kcal)} kcal`} sub={isAi ? 'estimate' : undefined} />
-                    <Stat label="Protein" value={`${Math.round(activeDayPlan.totals.proteinG)} g`} sub={isAi ? 'estimate' : undefined} />
-                    <Stat label="Target" value={`${plan.calorieTarget} kcal`} />
+                    <MetricCard label="Day total" value={<span className="t-numeral">{Math.round(activeDayPlan.totals.kcal)} kcal</span>} subtext={isAi ? 'estimate' : undefined} />
+                    <MetricCard label="Protein" value={<span className="t-numeral">{Math.round(activeDayPlan.totals.proteinG)} g</span>} subtext={isAi ? 'estimate' : undefined} />
+                    <MetricCard label="Target" value={<span className="t-numeral">{plan.calorieTarget} kcal</span>} />
                   </div>
 
                   {activeDayPlan.meals.map((m) => {
@@ -754,26 +775,33 @@ export default function MealPlansPage() {
                     const picked =
                       swapPick?.day === activeDayPlan.dayIndex && swapPick?.index === rawIndex;
                     return (
-                      <Card key={m.id} className={`p-4 ${picked ? 'ring-2 ring-sky-500' : ''}`}>
+                      <GlassPanel
+                        key={m.id}
+                        className="p-5"
+                        style={picked ? { border: '1px solid var(--accent)' } : undefined}
+                      >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="text-xs uppercase tracking-wide text-neutral-500">
-                              {mealLabel(String(m.mealType))}
-                            </p>
-                            <h3 className="text-base font-semibold">{m.name}</h3>
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {m.dietCategory === 'vegetarian' && <Badge tone="green">Vegetarian</Badge>}
-                              {m.cuisine && <Badge>{m.cuisine}</Badge>}
+                            <p className="t-meta uppercase">{mealLabel(String(m.mealType))}</p>
+                            <h3 className="t-card-heading mt-1">{m.name}</h3>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {m.dietCategory === 'vegetarian' && <LuxBadge tone="success">Vegetarian</LuxBadge>}
+                              {m.cuisine && <LuxBadge>{m.cuisine}</LuxBadge>}
                               {m.labels.slice(0, 4).map((l) => (
-                                <Badge key={l}>{l}</Badge>
+                                <LuxBadge key={l}>{l}</LuxBadge>
                               ))}
-                              {isAi && <Badge tone="blue">AI estimate</Badge>}
-                              {m.addedByYou && <Badge tone="blue">Added by you</Badge>}
+                              {isAi && <LuxBadge tone="accent">AI estimate</LuxBadge>}
+                              {m.addedByYou && <LuxBadge tone="accent">Added by you</LuxBadge>}
                             </div>
                             {hits.length > 0 && (
                               <div
                                 role="alert"
-                                className="mt-2 rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+                                className="mt-2 rounded-xl border p-2 text-xs"
+                                style={{
+                                  borderColor: 'color-mix(in srgb, var(--error) 45%, transparent)',
+                                  backgroundColor: 'color-mix(in srgb, var(--error) 10%, transparent)',
+                                  color: 'var(--text)',
+                                }}
                               >
                                 Contains your allergen{hits.length > 1 ? 's' : ''}: {hits.join(', ')}.
                                 Nothing is substituted — skip or replace this meal if it isn&apos;t safe for you.
@@ -787,19 +815,22 @@ export default function MealPlansPage() {
                         </div>
 
                         <div className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
-                          <span>
-                            <strong>{Math.round(m.scaledNutrients.kcal)} kcal</strong>
-                            {isAi && <span className="text-xs text-neutral-500"> (estimate)</span>}
+                          <span className="t-body">
+                            <strong className="t-numeral">{Math.round(m.scaledNutrients.kcal)} kcal</strong>
+                            {isAi && <span className="t-meta"> (estimate)</span>}
                           </span>
-                          <span className="text-neutral-600 dark:text-neutral-400">
-                            P {round1(m.scaledNutrients.proteinG)}g · C {round1(m.scaledNutrients.carbsG)}g · F{' '}
-                            {round1(m.scaledNutrients.fatG)}g · Fiber {round1(m.scaledNutrients.fiberG)}g
+                          <span className="t-body" style={{ color: 'var(--text-secondary)' }}>
+                            P <span className="t-numeral">{round1(m.scaledNutrients.proteinG)}</span>g · C{' '}
+                            <span className="t-numeral">{round1(m.scaledNutrients.carbsG)}</span>g · F{' '}
+                            <span className="t-numeral">{round1(m.scaledNutrients.fatG)}</span>g · Fiber{' '}
+                            <span className="t-numeral">{round1(m.scaledNutrients.fiberG)}</span>g
                           </span>
-                          <span className="text-neutral-600 dark:text-neutral-400">
-                            Prep {m.prepMin} min · Cook {m.cookMin} min
+                          <span className="t-body" style={{ color: 'var(--text-secondary)' }}>
+                            Prep <span className="t-numeral">{m.prepMin}</span> min · Cook{' '}
+                            <span className="t-numeral">{m.cookMin}</span> min
                           </span>
                           <span className="flex items-center gap-2">
-                            <label htmlFor={`srv-${m.id}`} className="text-neutral-600 dark:text-neutral-400">
+                            <label htmlFor={`srv-${m.id}`} className="t-body" style={{ color: 'var(--text-secondary)' }}>
                               Servings
                             </label>
                             <Input
@@ -817,12 +848,12 @@ export default function MealPlansPage() {
 
                         {m.ingredients.length > 0 && (
                           <div className="mt-3">
-                            <h4 className="text-sm font-semibold">Ingredients</h4>
-                            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm">
+                            <h4 className="t-body font-semibold">Ingredients</h4>
+                            <ul className="t-body mt-1 list-disc space-y-0.5 pl-5">
                               {m.ingredients.map((ing, i) => (
                                 <li key={i}>
                                   {ing.name}
-                                  {ing.quantity ? <span className="text-neutral-500"> — {ing.quantity}</span> : null}
+                                  {ing.quantity ? <span style={{ color: 'var(--text-secondary)' }}> — {ing.quantity}</span> : null}
                                 </li>
                               ))}
                             </ul>
@@ -831,8 +862,8 @@ export default function MealPlansPage() {
 
                         {m.instructions.length > 0 && (
                           <div className="mt-3">
-                            <h4 className="text-sm font-semibold">Instructions</h4>
-                            <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm">
+                            <h4 className="t-body font-semibold">Instructions</h4>
+                            <ol className="t-body mt-1 list-decimal space-y-1 pl-5">
                               {m.instructions.map((s, i) => (
                                 <li key={i}>{s}</li>
                               ))}
@@ -842,15 +873,15 @@ export default function MealPlansPage() {
 
                         {m.substitutions && (
                           <div className="mt-3">
-                            <h4 className="text-sm font-semibold">Substitutions</h4>
+                            <h4 className="t-body font-semibold">Substitutions</h4>
                             {Array.isArray(m.substitutions) ? (
-                              <ul className="mt-1 list-disc pl-5 text-sm">
+                              <ul className="t-body mt-1 list-disc pl-5">
                                 {m.substitutions.map((s, i) => (
                                   <li key={i}>{String(s)}</li>
                                 ))}
                               </ul>
                             ) : (
-                              <ul className="mt-1 list-disc pl-5 text-sm">
+                              <ul className="t-body mt-1 list-disc pl-5">
                                 {Object.entries(m.substitutions).map(([k, v]) => (
                                   <li key={k}>
                                     Instead of {k}: {String(v)}
@@ -861,8 +892,8 @@ export default function MealPlansPage() {
                           </div>
                         )}
 
-                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3 dark:border-neutral-700">
-                          <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+                          <label className="t-body flex min-h-[44px] cursor-pointer items-center gap-2">
                             <input
                               type="checkbox"
                               className="h-5 w-5"
@@ -870,29 +901,29 @@ export default function MealPlansPage() {
                               onChange={() => toggleAdherence(activeDayPlan.dayIndex, m.id)}
                               aria-label={`Mark ${m.name} as eaten`}
                             />
+                            {checked && <Check size={15} aria-hidden="true" style={{ color: 'var(--accent)' }} />}
                             Ate this
                           </label>
-                          <Button
-                            type="button"
-                            className="min-h-[44px]"
+                          <LuxButton
+                            variant="secondary"
                             disabled={regenerating === `${activeDayPlan.dayIndex}:${m.mealType}`}
                             onClick={() => void handleRegenerateMeal(activeDayPlan.dayIndex, String(m.mealType))}
                             aria-label={`Regenerate ${mealLabel(String(m.mealType)).toLowerCase()} for this day`}
                           >
+                            <RefreshCw size={15} aria-hidden="true" />
                             {regenerating === `${activeDayPlan.dayIndex}:${m.mealType}` ? 'Regenerating…' : 'Regenerate'}
-                          </Button>
+                          </LuxButton>
                           {swapMode && rawIndex >= 0 && (
-                            <Button
-                              type="button"
-                              className="min-h-[44px]"
+                            <LuxButton
+                              variant="secondary"
                               aria-pressed={picked}
                               onClick={() => handleSwapPick(activeDayPlan.dayIndex, rawIndex)}
                             >
                               {picked ? 'Selected' : 'Select to swap'}
-                            </Button>
+                            </LuxButton>
                           )}
                         </div>
-                      </Card>
+                      </GlassPanel>
                     );
                   })}
                 </div>

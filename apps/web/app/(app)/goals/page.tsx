@@ -1,18 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
+import { Check, Target } from "lucide-react";
+import { Field, Input, Select, Skeleton } from "@/components/ui";
 import {
-  Button,
-  Card,
-  Field,
-  Input,
-  PageHeader,
+  GlassPanel,
+  LuxButton,
   ProgressRing,
-  Select,
-  Skeleton,
-} from "@/components/ui";
+} from "@/components/luxury";
 import { num } from "@/lib/targets";
 import { useSession } from "../layout";
 
@@ -25,6 +22,7 @@ const GOAL_OPTIONS = [
 ];
 
 export default function GoalsPage() {
+  const router = useRouter();
   const session = useSession();
   const profile = (session.profile ?? {}) as Record<string, unknown>;
 
@@ -89,7 +87,7 @@ export default function GoalsPage() {
       const cw = parseFloat(currentWeightKg);
       if (Number.isFinite(cw) && cw > 0) body.weightKg = cw;
       await api("/api/profile", { method: "PUT", body });
-      setNotice("Goals updated ✓");
+      setNotice("Goals updated");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save your goals.");
     } finally {
@@ -109,19 +107,45 @@ export default function GoalsPage() {
   const goalLabel = GOAL_OPTIONS.find((o) => o.value === goal)?.label;
 
   return (
-    <div>
-      <PageHeader
-        title="Goals"
-        subtitle="Set your direction — your targets and plans adapt to it."
-      />
+    <div className="anim-page-enter">
+      <div className="mb-6">
+        <h1 className="t-page-title flex items-center gap-3">
+          <Target size={26} aria-hidden="true" style={{ color: "var(--accent)" }} />
+          Goals
+        </h1>
+        <p className="t-body mt-1" style={{ color: "var(--text-secondary)" }}>
+          Set your direction — your targets and plans adapt to it.
+        </p>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+        <GlassPanel className="p-6">
           {error && (
-            <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</p>
+            <p
+              role="alert"
+              className="mb-4 rounded-xl border p-3 text-sm"
+              style={{
+                borderColor: "color-mix(in srgb, var(--error) 45%, transparent)",
+                backgroundColor: "color-mix(in srgb, var(--error) 10%, transparent)",
+                color: "var(--text)",
+              }}
+            >
+              {error}
+            </p>
           )}
           {notice && (
-            <p role="status" className="mb-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/30 dark:text-green-300">{notice}</p>
+            <p
+              role="status"
+              className="mb-4 flex items-center gap-2 rounded-xl border p-3 text-sm"
+              style={{
+                borderColor: "color-mix(in srgb, var(--success) 45%, transparent)",
+                backgroundColor: "color-mix(in srgb, var(--success) 10%, transparent)",
+                color: "var(--text)",
+              }}
+            >
+              <Check size={16} aria-hidden="true" style={{ color: "var(--success)" }} />
+              {notice}
+            </p>
           )}
           <form onSubmit={onSave} className="space-y-5">
             <Field label="My goal" htmlFor="goal-goal" hint="Your calorie target and recommendations follow this goal.">
@@ -166,59 +190,61 @@ export default function GoalsPage() {
                 placeholder="e.g. 75"
               />
             </Field>
-            <Button type="submit" size="lg" disabled={saving}>
+            <LuxButton type="submit" disabled={saving}>
               {saving ? "Saving…" : "Save goals"}
-            </Button>
+            </LuxButton>
           </form>
-        </Card>
+        </GlassPanel>
 
-        <Card>
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-            Your progress
-          </h2>
+        <GlassPanel className="p-6">
+          <h2 className="t-card-heading">Your progress</h2>
           {progress ? (
             <div className="mt-4 flex flex-col items-center gap-3">
-              <ProgressRing
-                value={progress.done}
-                max={progress.band}
-                size={150}
-                label={`${progress.remaining.toFixed(1)} kg`}
-                sublabel="to go"
-              />
-              <dl className="grid w-full grid-cols-3 gap-2 text-center text-sm">
-                <div className="rounded-xl bg-neutral-100 p-3 dark:bg-neutral-800">
-                  <dt className="text-xs text-neutral-500">Current</dt>
-                  <dd className="font-bold text-neutral-900 dark:text-neutral-100">{progress.current.toFixed(1)} kg</dd>
+              <div className="relative">
+                <ProgressRing
+                  value={Math.min((progress.done / progress.band) * 100, 100)}
+                  size={150}
+                  showValue={false}
+                  label="Progress toward target weight"
+                />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="t-numeral text-3xl">{progress.remaining.toFixed(1)}</span>
+                  <span className="t-meta mt-1">kg to go</span>
                 </div>
-                <div className="rounded-xl bg-neutral-100 p-3 dark:bg-neutral-800">
-                  <dt className="text-xs text-neutral-500">Target</dt>
-                  <dd className="font-bold text-neutral-900 dark:text-neutral-100">{progress.target.toFixed(1)} kg</dd>
-                </div>
-                <div className="rounded-xl bg-neutral-100 p-3 dark:bg-neutral-800">
-                  <dt className="text-xs text-neutral-500">Goal</dt>
-                  <dd className="font-bold text-neutral-900 dark:text-neutral-100">{goalLabel ?? "—"}</dd>
-                </div>
+              </div>
+              <dl className="grid w-full grid-cols-3 gap-2 text-center">
+                {[
+                  { label: "Current", value: `${progress.current.toFixed(1)} kg` },
+                  { label: "Target", value: `${progress.target.toFixed(1)} kg` },
+                  { label: "Goal", value: goalLabel ?? "—" },
+                ].map((d) => (
+                  <div
+                    key={d.label}
+                    className="rounded-xl border p-3"
+                    style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}
+                  >
+                    <dt className="t-meta">{d.label}</dt>
+                    <dd className="t-numeral mt-1 text-lg">{d.value}</dd>
+                  </div>
+                ))}
               </dl>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Steady progress toward your goal beats perfection. Keep going 💪
+              <p className="t-body text-center" style={{ color: "var(--text-secondary)" }}>
+                Steady progress toward your goal beats perfection. Keep going.
               </p>
             </div>
           ) : (
             <div className="mt-4">
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+              <p className="t-body" style={{ color: "var(--text-secondary)" }}>
                 {goalLabel
                   ? `Your goal: ${goalLabel}. Add a target weight to track your progress toward it here.`
                   : "Choose a goal and add a target weight to see your progress here."}
               </p>
-              <Link
-                href="/progress"
-                className="mt-4 inline-flex min-h-[44px] items-center rounded-xl border border-neutral-300 px-4 text-sm font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-              >
+              <LuxButton variant="secondary" onClick={() => router.push("/progress")}>
                 View detailed progress
-              </Link>
+              </LuxButton>
             </div>
           )}
-        </Card>
+        </GlassPanel>
       </div>
     </div>
   );

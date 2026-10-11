@@ -1,113 +1,49 @@
 "use client";
 
 /**
- * /workouts/library/[slug] — exercise technique guide.
+ * /workouts/library/[slug] — exercise technique guide
+ * (Obsidian Gold luxury presentation).
  *
- * MEDIA AREA FIRST: the library shows a generated looping stick-figure
- * animation per exercise (see @/lib/exercise-animation) — never an
- * <img>/<video> with a broken or fake URL. Real media only renders when
- * mediaType + mediaUrl are both present and non-empty; the honest
- * placeholder remains as the final fallback.
+ * MEDIA AREA FIRST: <ExerciseMedia> renders real human video only when the
+ * EXERCISE_MEDIA registry (or mediaType/mediaUrl) provides a real,
+ * professionally-reviewed URL — never an invented or broken URL. The
+ * interim labeled "Animated demonstration" is kept (commissioned UX), and
+ * the honest "Video coming soon" panel is the final fallback. Written
+ * technique instructions are always rendered below the media.
+ *
+ * PRESENTATION ONLY: the media/technique rendering and data fetching are
+ * untouched — only the surrounding page chrome was restyled.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, Dumbbell } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { Skeleton } from "@/components/ui";
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  PageHeader,
-  Skeleton,
-} from "@/components/ui";
+  EmptyStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+} from "@/components/luxury";
 import {
   Exercise,
   WORKOUT_SAFETY_COPY,
   asStringArray,
-  difficultyTone,
   pickObject,
 } from "../../_shared";
-import {
-  ExerciseAnimation,
-  hasExerciseAnimation,
-} from "@/components/ExerciseAnimation";
-
-function MediaPanel({ exercise }: { exercise: Exercise }) {
-  const hasMedia =
-    exercise.mediaType &&
-    exercise.mediaType !== "none" &&
-    exercise.mediaUrl &&
-    exercise.mediaUrl.trim().length > 0;
-
-  if (hasMedia && exercise.mediaType === "video") {
-    return (
-      <div className="overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800">
-        <video
-          src={exercise.mediaUrl as string}
-          controls
-          preload="metadata"
-          className="aspect-video w-full bg-black"
-          aria-label={`${exercise.name} demonstration video`}
-        />
-      </div>
-    );
-  }
-  if (hasMedia && exercise.mediaType === "image") {
-    return (
-      <div className="overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={exercise.mediaUrl as string}
-          alt={`${exercise.name} demonstration`}
-          className="aspect-video w-full object-cover"
-        />
-      </div>
-    );
-  }
-
-  // Generated looping stick-figure demo (no database media needed).
-  if (hasExerciseAnimation(exercise.slug)) {
-    return (
-      <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-800/40">
-        <ExerciseAnimation
-          slug={exercise.slug}
-          label={`${exercise.name} animated demonstration`}
-          className="mx-auto aspect-video w-full max-w-md"
-        />
-      </div>
-    );
-  }
-
-  // Honest placeholder: no demo media exists for this exercise.
-  return (
-    <div
-      role="img"
-      aria-label={`No demonstration media for ${exercise.name}`}
-      className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-neutral-300 bg-neutral-50 px-6 text-center dark:border-neutral-700 dark:bg-neutral-800/40"
-    >
-      <span aria-hidden="true" className="text-3xl">
-        📋
-      </span>
-      <p className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-        Demo media not available
-      </p>
-      <p className="max-w-md text-sm text-neutral-500 dark:text-neutral-400">
-        Follow the step-by-step instructions below.
-      </p>
-    </div>
-  );
-}
+import { luxDifficultyTone } from "../../_lux";
+import { ExerciseMedia } from "@/components/ExerciseMedia";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section aria-label={title}>
-      <h2 className="mb-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
-        {title}
-      </h2>
+      <h2 className="t-card-heading mb-2">{title}</h2>
       {children}
     </section>
   );
 }
+
+const secondaryText = { color: "var(--text-secondary)" } as const;
 
 export default function ExerciseDetailPage({ params }: { params: { slug: string } }) {
   const { slug } = params;
@@ -147,20 +83,26 @@ export default function ExerciseDetailPage({ params }: { params: { slug: string 
     };
   }, [slug]);
 
-  const steps = exercise ? asStringArray(exercise.steps) : [];
-  const mistakes = exercise ? asStringArray(exercise.commonMistakes) : [];
-
   return (
-    <div>
-      <PageHeader
-        title={exercise ? exercise.name : "Exercise"}
-        subtitle={exercise?.exerciseType ? `Type: ${exercise.exerciseType}` : undefined}
-        actions={
+    <div className="anim-page-enter mx-auto max-w-3xl">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title">{exercise ? exercise.name : "Exercise"}</h1>
+          {exercise?.exerciseType ? (
+            <p className="mt-1 text-sm" style={secondaryText}>
+              Type: {exercise.exerciseType}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
           <Link href="/workouts/library">
-            <Button variant="secondary">Back to library</Button>
+            <LuxButton variant="secondary">
+              <ArrowLeft size={17} aria-hidden="true" />
+              Back to library
+            </LuxButton>
           </Link>
-        }
-      />
+        </div>
+      </div>
 
       {loading ? (
         <div className="space-y-4" aria-label="Loading exercise">
@@ -170,129 +112,63 @@ export default function ExerciseDetailPage({ params }: { params: { slug: string 
           <Skeleton className="h-40" />
         </div>
       ) : error || !exercise ? (
-        <EmptyState
+        <EmptyStateLux
+          icon={<Dumbbell size={22} aria-hidden="true" />}
           title="Exercise not found"
           message={error ?? "This exercise doesn't exist."}
           action={
             <Link href="/workouts/library">
-              <Button variant="secondary">Browse the library</Button>
+              <LuxButton variant="secondary">
+                <ArrowLeft size={17} aria-hidden="true" />
+                Browse the library
+              </LuxButton>
             </Link>
           }
         />
       ) : (
         <div className="space-y-6">
-          <MediaPanel exercise={exercise} />
+          {/* Media priority + always-present technique panel — DO NOT RESTYLE the internals. */}
+          <ExerciseMedia
+            slug={exercise.slug}
+            name={exercise.name}
+            mediaType={exercise.mediaType}
+            mediaUrl={exercise.mediaUrl}
+            technique={exercise}
+          />
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={difficultyTone(exercise.difficulty)}>{exercise.difficulty}</Badge>
+            <LuxBadge tone={luxDifficultyTone(exercise.difficulty)}>
+              {exercise.difficulty}
+            </LuxBadge>
             {asStringArray(exercise.trainingStyles).map((s) => (
-              <Badge key={s} tone="blue">
+              <LuxBadge key={s} tone="accent">
                 {s}
-              </Badge>
+              </LuxBadge>
             ))}
-            {exercise.homeSuitable ? <Badge>Home friendly</Badge> : null}
-            {exercise.gymSuitable ? <Badge>Gym</Badge> : null}
+            {exercise.homeSuitable ? <LuxBadge>Home friendly</LuxBadge> : null}
+            {exercise.gymSuitable ? <LuxBadge>Gym</LuxBadge> : null}
           </div>
 
-          {exercise.description ? (
-            <Section title="Purpose">
-              <p className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
-                {exercise.description}
-              </p>
-            </Section>
-          ) : null}
-
           <div className="grid gap-4 sm:grid-cols-2">
-            <Card>
+            <GlassPanel className="p-5">
               <Section title="Target muscles">
-                <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                <p className="text-sm leading-relaxed">
                   {asStringArray(exercise.muscleGroups).join(", ") || "—"}
                 </p>
               </Section>
-            </Card>
-            <Card>
+            </GlassPanel>
+            <GlassPanel className="p-5">
               <Section title="Equipment">
-                <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                <p className="text-sm leading-relaxed">
                   {asStringArray(exercise.equipment).join(", ") || "No equipment needed"}
                 </p>
               </Section>
-            </Card>
+            </GlassPanel>
           </div>
 
-          {steps.length ? (
-            <Card>
-              <Section title="How to do it">
-                <ol className="space-y-2.5">
-                  {steps.map((step, i) => (
-                    <li key={i} className="flex gap-3 text-sm text-neutral-700 dark:text-neutral-300">
-                      <span
-                        aria-hidden="true"
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand"
-                      >
-                        {i + 1}
-                      </span>
-                      <span className="pt-0.5">{step}</span>
-                    </li>
-                  ))}
-                </ol>
-              </Section>
-            </Card>
-          ) : null}
-
-          {exercise.breathing ? (
-            <Card>
-              <Section title="Breathing">
-                <p className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
-                  {exercise.breathing}
-                </p>
-              </Section>
-            </Card>
-          ) : null}
-
-          {mistakes.length ? (
-            <Card>
-              <Section title="Common mistakes">
-                <ul className="list-disc space-y-1.5 pl-5 text-sm text-neutral-700 dark:text-neutral-300">
-                  {mistakes.map((m, i) => (
-                    <li key={i}>{m}</li>
-                  ))}
-                </ul>
-              </Section>
-            </Card>
-          ) : null}
-
-          {exercise.easierVariation || exercise.harderVariation ? (
-            <Card>
-              <Section title="Make it easier or harder">
-                <div className="space-y-2 text-sm text-neutral-700 dark:text-neutral-300">
-                  {exercise.easierVariation ? (
-                    <p>
-                      <strong className="text-neutral-900 dark:text-neutral-100">Easier: </strong>
-                      {exercise.easierVariation}
-                    </p>
-                  ) : null}
-                  {exercise.harderVariation ? (
-                    <p>
-                      <strong className="text-neutral-900 dark:text-neutral-100">Harder: </strong>
-                      {exercise.harderVariation}
-                    </p>
-                  ) : null}
-                </div>
-              </Section>
-            </Card>
-          ) : null}
-
-          {exercise.safetyNotes ? (
-            <Card className="border-amber-300 dark:border-amber-800">
-              <Section title="Safety notes">
-                <p className="text-sm leading-relaxed text-amber-900 dark:text-amber-200">
-                  {exercise.safetyNotes}
-                </p>
-              </Section>
-            </Card>
-          ) : null}
-
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">{WORKOUT_SAFETY_COPY}</p>
+          <p className="text-xs leading-relaxed" style={secondaryText}>
+            {WORKOUT_SAFETY_COPY}
+          </p>
         </div>
       )}
     </div>

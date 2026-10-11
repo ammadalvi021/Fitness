@@ -3,13 +3,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { PLANS, getPlan, type PlanDefinition, type PlanId } from "@/lib/site";
-import {
-  Badge,
-  Button,
-  Card,
-  PageHeader,
-  Skeleton,
-} from "@/components/ui";
+import { Badge, Button, Skeleton } from "@/components/ui";
+import { GlassPanel, LuxBadge, PlanCard } from "@/components/luxury";
 import { useSession } from "../layout";
 
 type BillingProvider = "none" | "sandbox" | "stripe";
@@ -265,44 +260,86 @@ export default function PlansPage() {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Plans"
-        subtitle="Choose the plan that fits your journey. Paid plans activate through secure Stripe checkout — selecting a plan here never charges you."
-      />
+    <div className="anim-page-enter">
+      <h1 className="t-greeting">Plans</h1>
+      <p className="t-body mt-1 text-[var(--text-secondary)]">
+        Choose the plan that fits your journey. Paid plans activate through
+        secure Stripe checkout — selecting a plan here never charges you.
+      </p>
 
       {error && (
-        <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{error}</p>
+        <p
+          role="alert"
+          className="mb-4 mt-6 rounded-xl px-4 py-3 text-sm"
+          style={{
+            color: "var(--error)",
+            backgroundColor:
+              "color-mix(in srgb, var(--error) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--error) 38%, transparent)",
+          }}
+        >
+          {error}
+        </p>
       )}
       {notice && (
-        <p role="status" className="mb-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/30 dark:text-green-300">{notice}</p>
+        <p
+          role="status"
+          className="mb-4 mt-6 rounded-xl px-4 py-3 text-sm"
+          style={{
+            color: "var(--success)",
+            backgroundColor:
+              "color-mix(in srgb, var(--success) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--success) 38%, transparent)",
+          }}
+        >
+          {notice}
+        </p>
       )}
 
       {provider === "sandbox" && (
-        <p role="status" className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-          Sandbox billing is active — paid plan buttons create <strong>test-only</strong> simulated upgrades. No real charge is ever made.
+        <p
+          role="status"
+          className="mb-4 rounded-xl px-4 py-3 text-sm"
+          style={{
+            color: "var(--warning)",
+            backgroundColor:
+              "color-mix(in srgb, var(--warning) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--warning) 38%, transparent)",
+          }}
+        >
+          Sandbox billing is active — paid plan buttons create{" "}
+          <strong>test-only</strong> simulated upgrades. No real charge is ever
+          made.
         </p>
       )}
       {stripeMisconfigured && (
-        <p role="alert" className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-          Stripe billing is selected but not fully configured — paid checkout is unavailable until the administrator completes setup.
+        <p
+          role="alert"
+          className="mb-4 rounded-xl px-4 py-3 text-sm"
+          style={{
+            color: "var(--warning)",
+            backgroundColor:
+              "color-mix(in srgb, var(--warning) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--warning) 38%, transparent)",
+          }}
+        >
+          Stripe billing is selected but not fully configured — paid checkout is
+          unavailable until the administrator completes setup.
         </p>
       )}
 
       {/* Billing status */}
-      <Card className="mb-4">
+      <GlassPanel className="mb-4 mt-6 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-              Current plan
-            </h2>
-            <p className="mt-1 text-lg font-bold text-neutral-900 dark:text-neutral-100">
+            <h2 className="t-meta">Current plan</h2>
+            <p className="mt-1 flex items-center gap-2 text-lg font-bold text-[var(--text)]">
               {getPlan(currentPlanId).name}{" "}
               {sub?.status && sub.status !== "active" && (
                 <Badge tone="amber">{sub.status}</Badge>
               )}
             </p>
-            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
               {providerLine()}
             </p>
           </div>
@@ -316,71 +353,68 @@ export default function PlansPage() {
             </Button>
           )}
         </div>
-      </Card>
+      </GlassPanel>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-3">
         {plans.map((plan) => {
           const isCurrent = plan.id === currentPlanId;
           const isUpgrade = plan.rank > getPlan(currentPlanId).rank;
+          const showTestOnly = provider === "sandbox" && plan.id !== "free";
           return (
-            <Card
+            <PlanCard
               key={plan.id}
-              className={isCurrent ? "border-2 border-brand" : undefined}
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
-                  {plan.name}
-                </h2>
-                <div className="flex gap-2">
-                  {provider === "sandbox" && plan.id !== "free" && (
-                    <Badge tone="amber">Test only</Badge>
+              name={plan.name}
+              price={`$${plan.price.toFixed(2)}`}
+              period={
+                plan.billingPeriod === "free"
+                  ? "forever"
+                  : `/ ${plan.billingPeriod.replace("ly", "")}`
+              }
+              features={plan.features}
+              highlighted={isCurrent}
+              badge={isCurrent ? "Current" : undefined}
+              cta={
+                <>
+                  {showTestOnly && (
+                    <div className="mb-3">
+                      <LuxBadge tone="warning">Test only</LuxBadge>
+                    </div>
                   )}
-                  {isCurrent && <Badge tone="green">Current</Badge>}
-                </div>
-              </div>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">{plan.tagline}</p>
-              <p className="mt-3">
-                <span className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100">
-                  ${plan.price.toFixed(2)}
-                </span>{" "}
-                <span className="text-sm text-neutral-500 dark:text-neutral-400">
-                  {plan.billingPeriod === "free" ? "forever" : `/ ${plan.billingPeriod.replace("ly", "")}`}
-                </span>
-              </p>
-              <ul className="mt-4 space-y-1.5 text-sm text-neutral-700 dark:text-neutral-300">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex gap-2">
-                    <span aria-hidden="true" className="text-green-600">✓</span>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 border-t border-neutral-200 pt-3 text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-                {limitLabel(plan.limits.aiScansPerMonth, "AI scans/mo")} ·{" "}
-                {limitLabel(plan.limits.aiCoachMessagesPerDay, "coach msgs/day")}
-              </div>
-              <div className="mt-4">
-                {isCurrent ? (
-                  <p className="rounded-xl bg-green-50 px-4 py-3 text-center text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                    This is your current plan
+                  <p className="t-meta mb-2">Usage limits</p>
+                  <p className="mb-4 text-xs text-[var(--text-secondary)]">
+                    {limitLabel(plan.limits.aiScansPerMonth, "AI scans/mo")} ·{" "}
+                    {limitLabel(plan.limits.aiCoachMessagesPerDay, "coach msgs/day")}
                   </p>
-                ) : (
-                  <Button
-                    variant={isUpgrade ? "primary" : "secondary"}
-                    className="w-full"
-                    disabled={busy !== null}
-                    onClick={() => selectPlan(plan.id)}
-                  >
-                    {actionLabel(plan, isUpgrade)}
-                  </Button>
-                )}
-              </div>
-            </Card>
+                  {isCurrent ? (
+                    <p
+                      className="rounded-xl px-4 py-3 text-center text-sm font-medium"
+                      style={{
+                        color: "var(--success)",
+                        backgroundColor:
+                          "color-mix(in srgb, var(--success) 12%, transparent)",
+                        border: "1px solid color-mix(in srgb, var(--success) 38%, transparent)",
+                      }}
+                    >
+                      This is your current plan
+                    </p>
+                  ) : (
+                    <Button
+                      variant={isUpgrade ? "primary" : "secondary"}
+                      className="w-full"
+                      disabled={busy !== null}
+                      onClick={() => selectPlan(plan.id)}
+                    >
+                      {actionLabel(plan, isUpgrade)}
+                    </Button>
+                  )}
+                </>
+              }
+            />
           );
         })}
       </div>
 
-      <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-neutral-500 dark:text-neutral-400">
+      <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-[var(--text-secondary)]">
         Paid plans are activated only after payment through a configured provider
         (Stripe) — plan selection here never charges you. Free-plan changes apply
         immediately.

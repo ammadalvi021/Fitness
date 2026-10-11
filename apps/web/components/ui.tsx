@@ -326,17 +326,23 @@ export function Modal({
   children: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // onClose is often an inline arrow (new identity every parent render).
+  // Keep the latest in a ref so the effect below runs ONLY when `open`
+  // changes — otherwise every keystroke inside the dialog would re-run the
+  // effect and panelRef.current.focus() would yank focus out of inputs.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
     };
     document.addEventListener("keydown", onKey);
-    // Move focus into the dialog for keyboard users.
+    // Move focus into the dialog for keyboard users (only on open).
     panelRef.current?.focus();
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /workouts — weekly workout schedule.
+ * /workouts — weekly workout schedule (Obsidian Gold luxury presentation).
  *
  * - Loads the latest plan from GET /api/workouts/plans
  * - Generates a plan via POST /api/workouts/plans/generate (403 plan_required -> upgrade gate)
@@ -10,19 +10,32 @@
  *   hands the day snapshot to the session player via sessionStorage
  * - Reschedule-missed affordance for past workout days
  * - Recent workout history (from GET /api/progress)
+ *
+ * PRESENTATION ONLY: all data flow, gating, and API behavior are unchanged.
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, ApiError } from "@/lib/api";
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  PageHeader,
-  Skeleton,
-} from "@/components/ui";
+  AlertTriangle,
+  BookOpen,
+  Crown,
+  Dumbbell,
+  History,
+  Info,
+  Play,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react";
+import { api, ApiError } from "@/lib/api";
+import { Skeleton } from "@/components/ui";
+import {
+  EmptyStateLux,
+  ErrorStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+} from "@/components/luxury";
 import {
   NormalizedPlanDay,
   SessionSnapshot,
@@ -69,6 +82,8 @@ function normalizeHistory(data: unknown): HistoryEntry[] {
     return { date, name, detail: bits.length ? bits.join(" · ") : undefined };
   });
 }
+
+const secondaryText = { color: "var(--text-secondary)" } as const;
 
 export default function WorkoutsPage() {
   const router = useRouter();
@@ -168,21 +183,27 @@ export default function WorkoutsPage() {
   if (profile?.fitnessExperience) prefs.push(profile.fitnessExperience);
 
   return (
-    <div>
-      <PageHeader
-        title="Workouts"
-        subtitle="Your weekly training schedule, exercise library, and live sessions."
-        actions={
-          <>
-            <Link href="/workouts/library">
-              <Button variant="secondary">Exercise library</Button>
-            </Link>
-            <Button onClick={handleGenerate} disabled={generating}>
-              {generating ? "Generating…" : plan ? "Regenerate plan" : "Generate plan"}
-            </Button>
-          </>
-        }
-      />
+    <div className="anim-page-enter">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title">Workouts</h1>
+          <p className="mt-1 text-sm" style={secondaryText}>
+            Your weekly training schedule, exercise library, and live sessions.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/workouts/library">
+            <LuxButton variant="secondary">
+              <BookOpen size={17} aria-hidden="true" />
+              Exercise library
+            </LuxButton>
+          </Link>
+          <LuxButton onClick={handleGenerate} disabled={generating}>
+            <Sparkles size={17} aria-hidden="true" />
+            {generating ? "Generating…" : plan ? "Regenerate plan" : "Generate plan"}
+          </LuxButton>
+        </div>
+      </div>
 
       {loading ? (
         <div className="space-y-3" aria-label="Loading workouts">
@@ -196,109 +217,151 @@ export default function WorkoutsPage() {
       ) : (
         <>
           {error ? (
-            <Card className="mb-4 border-red-200 dark:border-red-900">
-              <p role="alert" className="text-sm text-red-700 dark:text-red-300">
-                {error}
-              </p>
-              <Button variant="secondary" className="mt-3" onClick={() => void load()}>
-                Try again
-              </Button>
-            </Card>
+            <ErrorStateLux
+              title="Couldn't load your workouts"
+              message={error}
+              onRetry={() => void load()}
+              retryLabel="Try again"
+              className="mb-4"
+            />
           ) : null}
 
+          {/* Upgrade gate — premium treatment, gating logic and copy unchanged. */}
           {gated ? (
-            <Card className="mb-4 border-amber-300 dark:border-amber-800">
-              <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+            <GlassPanel
+              className="anim-page-enter relative mb-4 p-6 pt-7"
+              style={{ border: "1px solid var(--accent)" }}
+            >
+              <div className="absolute -top-3 left-6">
+                <LuxBadge tone="accent">
+                  <Crown size={13} aria-hidden="true" />
+                  Premium
+                </LuxBadge>
+              </div>
+              <h2 className="t-card-heading">
                 Workout plans need the Diet + Exercise plan
               </h2>
-              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+              <p className="mt-1.5 text-sm leading-relaxed" style={secondaryText}>
                 Your current plan doesn&apos;t include generated workout plans. Upgrade to
                 unlock personalized weekly training built around your goals, equipment,
                 and schedule.
               </p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <Link href="/plans">
-                  <Button>View plans</Button>
+                  <LuxButton>View plans</LuxButton>
                 </Link>
-                <Button variant="secondary" onClick={() => setGated(false)}>
+                <LuxButton variant="secondary" onClick={() => setGated(false)}>
                   Dismiss
-                </Button>
+                </LuxButton>
               </div>
-            </Card>
+            </GlassPanel>
           ) : null}
 
           {/* Plan header: preferences + restrictions + safety */}
           {plan ? (
-            <Card className="mb-4">
+            <GlassPanel className="mb-4 p-5">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                <h2 className="t-card-heading">
                   Week of {plan.weekStart ? formatShortDate(String(plan.weekStart)) : "your plan"}
                 </h2>
-                {plan.generatedBy ? <Badge tone="blue">{plan.generatedBy}</Badge> : null}
+                {plan.generatedBy ? <LuxBadge>{plan.generatedBy}</LuxBadge> : null}
               </div>
               {prefs.length ? (
-                <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                <p className="mt-1.5 text-sm" style={secondaryText}>
                   Built for: {prefs.join(" · ")}
                 </p>
               ) : null}
               {profile?.exerciseRestrictions ? (
-                <p className="mt-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
-                  <strong>Your noted restrictions:</strong> {profile.exerciseRestrictions}. This
-                  plan was generated with them in mind — skip anything that doesn&apos;t feel
-                  right and talk to a qualified professional about alternatives.
-                </p>
+                <div
+                  className="mt-3 flex gap-3 rounded-xl p-3"
+                  style={{
+                    backgroundColor: "color-mix(in srgb, var(--warning) 10%, transparent)",
+                    border: "1px solid color-mix(in srgb, var(--warning) 40%, transparent)",
+                  }}
+                >
+                  <AlertTriangle
+                    size={18}
+                    aria-hidden="true"
+                    className="mt-0.5 shrink-0"
+                    style={{ color: "var(--warning)" }}
+                  />
+                  <p className="text-sm leading-relaxed">
+                    <strong>Your noted restrictions:</strong> {profile.exerciseRestrictions}. This
+                    plan was generated with them in mind — skip anything that doesn&apos;t feel
+                    right and talk to a qualified professional about alternatives.
+                  </p>
+                </div>
               ) : null}
-              <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">{WORKOUT_SAFETY_COPY}</p>
-            </Card>
+              <p className="mt-3 text-xs leading-relaxed" style={secondaryText}>
+                {WORKOUT_SAFETY_COPY}
+              </p>
+            </GlassPanel>
           ) : null}
 
           {!plan && !gated ? (
-            <EmptyState
+            <EmptyStateLux
+              icon={<Dumbbell size={22} aria-hidden="true" />}
               title="No workout plan yet"
               message="Generate a weekly plan tailored to your goal, experience, equipment, and available days. It takes a few seconds."
-              action={<Button onClick={handleGenerate} disabled={generating}>{generating ? "Generating…" : "Generate my plan"}</Button>}
+              action={
+                <LuxButton onClick={handleGenerate} disabled={generating}>
+                  <Sparkles size={17} aria-hidden="true" />
+                  {generating ? "Generating…" : "Generate my plan"}
+                </LuxButton>
+              }
             />
           ) : null}
 
           {profile?.fitnessExperience === "beginner" && plan ? (
-            <Card className="mb-4 border-sky-200 dark:border-sky-900">
-              <p className="text-sm text-neutral-700 dark:text-neutral-300">
+            <GlassPanel className="mb-4 flex gap-3 p-4">
+              <Info
+                size={18}
+                aria-hidden="true"
+                className="mt-0.5 shrink-0"
+                style={{ color: "var(--accent)" }}
+              />
+              <p className="text-sm leading-relaxed">
                 <strong>New to training?</strong> Every exercise page includes an easier
                 variation — start there and build up gradually.{" "}
-                <Link href="/workouts/library" className="font-semibold text-brand underline">
+                <Link
+                  href="/workouts/library"
+                  className="font-semibold underline"
+                  style={{ color: "var(--accent)" }}
+                >
                   Browse the exercise library
                 </Link>
               </p>
-            </Card>
+            </GlassPanel>
           ) : null}
 
           {/* Weekly schedule */}
           {plan && days.length ? (
             <section aria-label="Weekly schedule" className="mt-2">
-              <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                This week
-              </h2>
+              <h2 className="t-card-heading mb-3">This week</h2>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {days.map((day) => {
                   const missed = !day.isRest && day.dayIndex < todayIdx;
                   const startKey = `${day.dayIndex}-s`;
                   const reschedKey = `${day.dayIndex}-r`;
                   return (
-                    <Card
+                    <GlassPanel
                       key={day.dayIndex}
-                      className={day.dayIndex === todayIdx ? "ring-2 ring-brand" : ""}
+                      className="anim-hover-lift flex flex-col p-5"
+                      style={
+                        day.dayIndex === todayIdx
+                          ? { border: "1px solid var(--accent)" }
+                          : undefined
+                      }
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div>
-                          <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">
-                            {day.label}
-                          </h3>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">{day.title}</p>
+                          <h3 className="t-card-heading">{day.label}</h3>
+                          <p className="text-xs" style={secondaryText}>{day.title}</p>
                         </div>
-                        <div className="flex gap-1.5">
-                          {day.dayIndex === todayIdx ? <Badge tone="blue">Today</Badge> : null}
-                          {day.isRest ? <Badge>Rest</Badge> : null}
-                          {missed ? <Badge tone="amber">Missed</Badge> : null}
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {day.dayIndex === todayIdx ? <LuxBadge tone="accent">Today</LuxBadge> : null}
+                          {day.isRest ? <LuxBadge>Rest</LuxBadge> : null}
+                          {missed ? <LuxBadge tone="warning">Missed</LuxBadge> : null}
                         </div>
                       </div>
 
@@ -307,22 +370,24 @@ export default function WorkoutsPage() {
                           {day.exercises.map((ex) => (
                             <li
                               key={ex.key}
-                              className="flex items-center justify-between gap-2 rounded-xl bg-neutral-50 px-3 py-2 dark:bg-neutral-800/60"
+                              className="flex items-center justify-between gap-2 rounded-xl px-3 py-2"
+                              style={{ backgroundColor: "var(--bg-secondary)" }}
                             >
                               <div className="min-w-0">
                                 {ex.slug ? (
                                   <Link
                                     href={`/workouts/library/${ex.slug}`}
-                                    className="truncate text-sm font-medium text-brand hover:underline"
+                                    className="block truncate text-sm font-medium hover:underline"
+                                    style={{ color: "var(--accent)" }}
                                   >
                                     {ex.name}
                                   </Link>
                                 ) : (
-                                  <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                                  <span className="block truncate text-sm font-medium">
                                     {ex.name}
                                   </span>
                                 )}
-                                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                <p className="text-xs" style={secondaryText}>
                                   {ex.sets} × {ex.reps}
                                   {ex.weightKg ? ` · ${ex.weightKg} kg` : ""}
                                 </p>
@@ -332,35 +397,35 @@ export default function WorkoutsPage() {
                         </ul>
                       ) : null}
                       {day.isRest ? (
-                        <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400">
+                        <p className="mt-3 text-sm" style={secondaryText}>
                           Recovery day — light walking, stretching, or full rest.
                         </p>
                       ) : null}
 
                       {!day.isRest ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
+                        <div className="mt-3 flex flex-wrap gap-2 pt-1">
+                          <LuxButton
                             onClick={() => void startSession(day, false)}
                             disabled={startingKey !== null}
                             aria-label={`Start ${day.label} workout session`}
                           >
+                            <Play size={16} aria-hidden="true" />
                             {startingKey === startKey ? "Starting…" : "Start session"}
-                          </Button>
+                          </LuxButton>
                           {missed ? (
-                            <Button
-                              size="sm"
+                            <LuxButton
                               variant="secondary"
                               onClick={() => void startSession(day, true)}
                               disabled={startingKey !== null}
                               aria-label={`Reschedule missed ${day.label} workout to today`}
                             >
+                              <RotateCcw size={16} aria-hidden="true" />
                               {startingKey === reschedKey ? "Starting…" : "Reschedule to today"}
-                            </Button>
+                            </LuxButton>
                           ) : null}
                         </div>
                       ) : null}
-                    </Card>
+                    </GlassPanel>
                   );
                 })}
               </div>
@@ -369,37 +434,47 @@ export default function WorkoutsPage() {
 
           {/* Workout history */}
           <section aria-label="Workout history" className="mt-8">
-            <h2 className="mb-3 text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-              Recent sessions
-            </h2>
+            <h2 className="t-card-heading mb-3">Recent sessions</h2>
             {history.length ? (
-              <Card>
-                <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              <GlassPanel className="px-5 py-2">
+                <ul>
                   {history.slice(0, 10).map((h, i) => (
-                    <li key={`${h.date}-${i}`} className="flex items-center justify-between gap-3 py-2.5">
+                    <li
+                      key={`${h.date}-${i}`}
+                      className="flex items-center justify-between gap-3 py-2.5"
+                      style={{
+                        borderBottom:
+                          i < Math.min(10, history.length) - 1
+                            ? "1px solid var(--border)"
+                            : undefined,
+                      }}
+                    >
                       <div>
-                        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{h.name}</p>
+                        <p className="text-sm font-medium">{h.name}</p>
                         {h.detail ? (
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">{h.detail}</p>
+                          <p className="text-xs" style={secondaryText}>{h.detail}</p>
                         ) : null}
                       </div>
-                      <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">
+                      <span className="shrink-0 text-xs" style={secondaryText}>
                         {h.date ? formatShortDate(h.date) : ""}
                       </span>
                     </li>
                   ))}
                 </ul>
-              </Card>
+              </GlassPanel>
             ) : (
-              <EmptyState
+              <EmptyStateLux
+                icon={<History size={22} aria-hidden="true" />}
                 title="No sessions logged yet"
                 message="Your completed workouts will show up here. Start a session from your weekly plan to log your first one."
               />
             )}
           </section>
 
-          <p className="mt-8 text-xs text-neutral-500 dark:text-neutral-400">{WORKOUT_SAFETY_COPY}</p>
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="mt-8 text-xs leading-relaxed" style={secondaryText}>
+            {WORKOUT_SAFETY_COPY}
+          </p>
+          <p className="mt-1 text-xs leading-relaxed" style={secondaryText}>
             Plans respect the limits you disclosed in your profile. If anything in this
             plan conflicts with medical advice you&apos;ve received, follow your
             professional&apos;s guidance instead.

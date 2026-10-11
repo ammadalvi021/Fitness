@@ -1,32 +1,33 @@
 "use client";
 
 /**
- * /workouts/library — searchable, filterable exercise library.
+ * /workouts/library — searchable, filterable exercise library
+ * (Obsidian Gold luxury presentation).
  *
  * Server-side search params (per CONTRACT: q, muscle, equipment, difficulty)
  * plus client-side filters for training style and home/gym, derived from the
  * fetched exercises so the UI stays correct as the library grows.
+ *
+ * PRESENTATION ONLY: search/filter logic is identical to the original.
  */
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, Dumbbell, SearchX, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { Input, Select, Skeleton } from "@/components/ui";
 import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  Input,
-  PageHeader,
-  Select,
-  Skeleton,
-} from "@/components/ui";
+  EmptyStateLux,
+  ErrorStateLux,
+  GlassPanel,
+  LuxBadge,
+  LuxButton,
+} from "@/components/luxury";
 import {
   Exercise,
   asStringArray,
-  difficultyTone,
   pickArray,
 } from "../_shared";
+import { luxDifficultyTone } from "../_lux";
 import {
   ExerciseAnimation,
   hasExerciseAnimation,
@@ -36,6 +37,27 @@ const ALL = "all";
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.map((v) => v.trim()).filter(Boolean))).sort();
+}
+
+const secondaryText = { color: "var(--text-secondary)" } as const;
+
+function LuxFilterField({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={htmlFor} className="t-meta mb-1.5 block">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
 }
 
 export default function ExerciseLibraryPage() {
@@ -114,20 +136,27 @@ export default function ExerciseLibraryPage() {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Exercise library"
-        subtitle="Technique-first guides for every movement. Pick one to see step-by-step instructions."
-        actions={
+    <div className="anim-page-enter">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="t-page-title">Exercise library</h1>
+          <p className="mt-1 text-sm" style={secondaryText}>
+            Technique-first guides for every movement. Pick one to see step-by-step instructions.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
           <Link href="/workouts">
-            <Button variant="secondary">Back to workouts</Button>
+            <LuxButton variant="secondary">
+              <ArrowLeft size={17} aria-hidden="true" />
+              Back to workouts
+            </LuxButton>
           </Link>
-        }
-      />
+        </div>
+      </div>
 
-      <Card className="mb-5">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Search" htmlFor="ex-q">
+      <GlassPanel className="mb-5 p-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <LuxFilterField label="Search" htmlFor="ex-q">
             <Input
               id="ex-q"
               type="search"
@@ -136,8 +165,8 @@ export default function ExerciseLibraryPage() {
               onChange={(e) => setQ(e.target.value)}
               aria-label="Search exercises"
             />
-          </Field>
-          <Field label="Muscle group" htmlFor="ex-muscle">
+          </LuxFilterField>
+          <LuxFilterField label="Muscle group" htmlFor="ex-muscle">
             <Select id="ex-muscle" value={muscle} onChange={(e) => setMuscle(e.target.value)}>
               <option value={ALL}>All muscle groups</option>
               {muscles.map((m) => (
@@ -146,8 +175,8 @@ export default function ExerciseLibraryPage() {
                 </option>
               ))}
             </Select>
-          </Field>
-          <Field label="Equipment" htmlFor="ex-equipment">
+          </LuxFilterField>
+          <LuxFilterField label="Equipment" htmlFor="ex-equipment">
             <Select id="ex-equipment" value={equipment} onChange={(e) => setEquipment(e.target.value)}>
               <option value={ALL}>Any equipment</option>
               {equipments.map((m) => (
@@ -156,16 +185,16 @@ export default function ExerciseLibraryPage() {
                 </option>
               ))}
             </Select>
-          </Field>
-          <Field label="Difficulty" htmlFor="ex-difficulty">
+          </LuxFilterField>
+          <LuxFilterField label="Difficulty" htmlFor="ex-difficulty">
             <Select id="ex-difficulty" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
               <option value={ALL}>Any difficulty</option>
               <option value="beginner">Beginner</option>
               <option value="intermediate">Intermediate</option>
               <option value="advanced">Advanced</option>
             </Select>
-          </Field>
-          <Field label="Training style" htmlFor="ex-style">
+          </LuxFilterField>
+          <LuxFilterField label="Training style" htmlFor="ex-style">
             <Select id="ex-style" value={style} onChange={(e) => setStyle(e.target.value)}>
               <option value={ALL}>Any style</option>
               {styles.map((s) => (
@@ -174,23 +203,24 @@ export default function ExerciseLibraryPage() {
                 </option>
               ))}
             </Select>
-          </Field>
-          <Field label="Location" htmlFor="ex-location">
+          </LuxFilterField>
+          <LuxFilterField label="Location" htmlFor="ex-location">
             <Select id="ex-location" value={location} onChange={(e) => setLocation(e.target.value)}>
               <option value={ALL}>Home &amp; gym</option>
               <option value="home">Home friendly</option>
               <option value="gym">Gym</option>
             </Select>
-          </Field>
+          </LuxFilterField>
         </div>
         {hasFilters ? (
-          <div className="mt-3">
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
+          <div className="mt-4">
+            <LuxButton variant="ghost" onClick={clearFilters}>
+              <X size={16} aria-hidden="true" />
               Clear all filters
-            </Button>
+            </LuxButton>
           </div>
         ) : null}
-      </Card>
+      </GlassPanel>
 
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Loading exercises">
@@ -199,17 +229,21 @@ export default function ExerciseLibraryPage() {
           ))}
         </div>
       ) : error ? (
-        <EmptyState
+        <ErrorStateLux
           title="Couldn't load exercises"
           message={error}
-          action={
-            <Button variant="secondary" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          }
+          onRetry={() => window.location.reload()}
+          retryLabel="Retry"
         />
       ) : filtered.length === 0 ? (
-        <EmptyState
+        <EmptyStateLux
+          icon={
+            hasFilters ? (
+              <SearchX size={22} aria-hidden="true" />
+            ) : (
+              <Dumbbell size={22} aria-hidden="true" />
+            )
+          }
           title={hasFilters ? "No exercises match those filters" : "No exercises yet"}
           message={
             hasFilters
@@ -218,15 +252,16 @@ export default function ExerciseLibraryPage() {
           }
           action={
             hasFilters ? (
-              <Button variant="secondary" onClick={clearFilters}>
+              <LuxButton variant="secondary" onClick={clearFilters}>
+                <X size={16} aria-hidden="true" />
                 Clear filters
-              </Button>
+              </LuxButton>
             ) : undefined
           }
         />
       ) : (
         <>
-          <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-400" role="status">
+          <p className="mb-3 text-sm" style={secondaryText} role="status">
             {filtered.length} {filtered.length === 1 ? "exercise" : "exercises"}
           </p>
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -234,12 +269,15 @@ export default function ExerciseLibraryPage() {
               <li key={e.slug}>
                 <Link
                   href={`/workouts/library/${e.slug}`}
-                  className="block h-full rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  className="block h-full rounded-2xl"
                   aria-label={`View ${e.name} technique guide`}
                 >
-                  <Card className="flex h-full flex-col gap-2 transition-shadow hover:shadow-md">
+                  <GlassPanel className="anim-hover-lift flex h-full flex-col gap-2.5 p-4">
                     {hasExerciseAnimation(e.slug) ? (
-                      <div className="flex justify-center rounded-xl bg-neutral-50 py-1 dark:bg-neutral-800/40">
+                      <div
+                        className="flex justify-center rounded-xl py-1"
+                        style={{ backgroundColor: "var(--bg-secondary)" }}
+                      >
                         <ExerciseAnimation
                           slug={e.slug}
                           label={`${e.name} animation`}
@@ -249,31 +287,29 @@ export default function ExerciseLibraryPage() {
                       </div>
                     ) : null}
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">
-                        {e.name}
-                      </h3>
-                      <Badge tone={difficultyTone(e.difficulty)}>{e.difficulty}</Badge>
+                      <h3 className="t-card-heading">{e.name}</h3>
+                      <LuxBadge tone={luxDifficultyTone(e.difficulty)}>{e.difficulty}</LuxBadge>
                     </div>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      <span className="font-medium">Muscles:</span>{" "}
+                    <p className="text-sm" style={secondaryText}>
+                      <span className="t-meta mr-1.5">Muscles</span>
                       {asStringArray(e.muscleGroups).join(", ") || "—"}
                     </p>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                      <span className="font-medium">Equipment:</span>{" "}
+                    <p className="text-sm" style={secondaryText}>
+                      <span className="t-meta mr-1.5">Equipment</span>
                       {asStringArray(e.equipment).join(", ") || "—"}
                     </p>
                     <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
-                      {e.homeSuitable ? <Badge>Home</Badge> : null}
-                      {e.gymSuitable ? <Badge>Gym</Badge> : null}
+                      {e.homeSuitable ? <LuxBadge>Home</LuxBadge> : null}
+                      {e.gymSuitable ? <LuxBadge>Gym</LuxBadge> : null}
                       {asStringArray(e.trainingStyles)
                         .slice(0, 3)
                         .map((s) => (
-                          <Badge key={s} tone="blue">
+                          <LuxBadge key={s} tone="accent">
                             {s}
-                          </Badge>
+                          </LuxBadge>
                         ))}
                     </div>
-                  </Card>
+                  </GlassPanel>
                 </Link>
               </li>
             ))}

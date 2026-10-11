@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { Button, Field, Input } from "@/components/ui";
+import { Field, Input } from "@/components/ui";
+import { LuxButton } from "@/components/luxury";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -29,12 +30,10 @@ export default function ForgotPasswordPage() {
 
   return (
     <>
-      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-        Reset your password
-      </h1>
+      <h1 className="t-card-heading text-2xl">Reset your password</h1>
       {!sent ? (
         <>
-          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
             Enter your account email and we&apos;ll send you a reset link.
           </p>
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
@@ -49,19 +48,28 @@ export default function ForgotPasswordPage() {
                 placeholder="you@example.com"
               />
             </Field>
-            <Button type="submit" size="lg" className="w-full" disabled={loading}>
+            <LuxButton type="submit" className="w-full" disabled={loading}>
               {loading ? "Sending…" : "Send reset link"}
-            </Button>
+            </LuxButton>
           </form>
         </>
       ) : (
-        <p role="status" className="mt-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/30 dark:text-green-300">
+        <p
+          role="status"
+          className="mt-4 rounded-xl px-4 py-3 text-sm"
+          style={{
+            color: "var(--success)",
+            backgroundColor:
+              "color-mix(in srgb, var(--success) 12%, transparent)",
+            border: "1px solid color-mix(in srgb, var(--success) 38%, transparent)",
+          }}
+        >
           If an account exists for <strong>{email}</strong>, a password reset
           link is on its way. Check your inbox (and spam folder).
         </p>
       )}
-      <p className="mt-6 text-center text-sm text-neutral-600 dark:text-neutral-400">
-        <Link href="/login" className="font-medium text-brand hover:underline">
+      <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">
+        <Link href="/login" className="font-medium text-[var(--accent)] hover:underline">
           Back to sign in
         </Link>
       </p>

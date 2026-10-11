@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Calculator, Check, Droplets, Info } from "lucide-react";
 import {
   Line,
   LineChart,
@@ -11,15 +12,14 @@ import {
   YAxis,
 } from "recharts";
 import { api, ApiError } from "@/lib/api";
+import { Field, Input, Skeleton } from "@/components/ui";
 import {
-  Button,
-  Card,
-  EmptyState,
-  Field,
-  Input,
-  PageHeader,
-  Skeleton,
-} from "@/components/ui";
+  EmptyStateLux,
+  GlassPanel,
+  LuxButton,
+  MetricCard,
+  Tooltip as LuxTooltip,
+} from "@/components/luxury";
 import { profileTargets, num, ageFromDob } from "@/lib/targets";
 import { useSession } from "../layout";
 
@@ -39,6 +39,7 @@ interface MeasurementLike {
 }
 
 export default function CalculatorsPage() {
+  const router = useRouter();
   const session = useSession();
   const profile = (session.profile ?? {}) as Record<string, unknown>;
 
@@ -148,39 +149,46 @@ export default function CalculatorsPage() {
   }, [history]);
 
   return (
-    <div>
-      <PageHeader
-        title="Calculators"
-        subtitle="Quick health math, explained plainly."
-      />
+    <div className="anim-page-enter">
+      <div className="mb-6">
+        <h1 className="t-page-title flex items-center gap-3">
+          <Calculator size={26} aria-hidden="true" style={{ color: "var(--accent)" }} />
+          Calculators
+        </h1>
+        <p className="t-body mt-1" style={{ color: "var(--text-secondary)" }}>
+          Quick health math, explained plainly.
+        </p>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* ------------------------------ BMI ------------------------------ */}
-        <Card>
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-            BMI calculator
-          </h2>
+        <GlassPanel className="p-6">
+          <h2 className="t-card-heading">BMI calculator</h2>
           <div className="mt-3 flex gap-2" role="group" aria-label="Units">
             {(["metric", "imperial"] as const).map((u) => (
-              <button
+              <LuxButton
                 key={u}
-                type="button"
-                onClick={() => setUnits(u)}
+                variant={units === u ? "primary" : "secondary"}
+                className="flex-1"
                 aria-pressed={units === u}
-                className={`min-h-[44px] flex-1 rounded-xl border px-4 text-sm font-medium ${
-                  units === u
-                    ? "border-brand bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                    : "border-neutral-300 text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-                }`}
+                onClick={() => setUnits(u)}
               >
                 {u === "metric" ? "Metric (kg, cm)" : "Imperial (lb, in)"}
-              </button>
+              </LuxButton>
             ))}
           </div>
 
           <form onSubmit={calculate} className="mt-4 space-y-4">
             {calcError && (
-              <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              <p
+                role="alert"
+                className="rounded-xl border p-3 text-sm"
+                style={{
+                  borderColor: "color-mix(in srgb, var(--error) 45%, transparent)",
+                  backgroundColor: "color-mix(in srgb, var(--error) 10%, transparent)",
+                  color: "var(--text)",
+                }}
+              >
                 {calcError}
               </p>
             )}
@@ -236,149 +244,171 @@ export default function CalculatorsPage() {
                 placeholder="30"
               />
             </Field>
-            <Button type="submit" size="lg" className="w-full" disabled={calculating}>
+            <LuxButton type="submit" className="w-full" disabled={calculating}>
               {calculating ? "Calculating…" : "Calculate BMI"}
-            </Button>
+            </LuxButton>
           </form>
 
           {result && (
-            <div className="mt-5 rounded-xl bg-neutral-100 p-4 dark:bg-neutral-800" aria-live="polite">
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Your BMI
-              </p>
-              <p className="text-4xl font-extrabold text-neutral-900 dark:text-neutral-100">
+            <div
+              className="mt-5 rounded-2xl border p-5"
+              style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}
+              aria-live="polite"
+            >
+              <p className="t-meta">Your BMI</p>
+              <p className="t-numeral mt-1 text-4xl" style={{ color: "var(--accent)" }}>
                 {result.bmi}
               </p>
               {result.classificationLabel && (
-                <p className="mt-1 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                <p className="t-body mt-1 font-medium">
                   Classification: {result.classificationLabel}
                 </p>
               )}
-              <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="t-meta mt-2">
                 {result.screeningNote || "BMI is a screening measure, not a diagnosis."}
               </p>
               {result.isMinor && result.pediatricGuidance && (
-                <p role="note" className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                <p
+                  role="note"
+                  className="t-meta mt-2 rounded-xl border p-3"
+                  style={{
+                    borderColor: "color-mix(in srgb, var(--warning) 45%, transparent)",
+                    backgroundColor: "color-mix(in srgb, var(--warning) 10%, transparent)",
+                    color: "var(--text)",
+                  }}
+                >
                   {result.pediatricGuidance}
                 </p>
               )}
               {!saved ? (
-                <Button
+                <LuxButton
                   variant="secondary"
-                  size="sm"
                   className="mt-3"
                   onClick={saveResult}
                   disabled={saving}
                 >
                   {saving ? "Saving…" : "Save to history"}
-                </Button>
+                </LuxButton>
               ) : (
-                <p role="status" className="mt-3 text-sm font-medium text-green-700 dark:text-green-300">
-                  Saved to your history ✓
+                <p role="status" className="t-body mt-3 flex items-center gap-1.5 font-medium" style={{ color: "var(--success)" }}>
+                  <Check size={16} aria-hidden="true" />
+                  Saved to your history
                 </p>
               )}
             </div>
           )}
 
           {/* BMI history */}
-          <h3 className="mt-6 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-            BMI history
-          </h3>
+          <h3 className="t-meta mt-6 uppercase">BMI history</h3>
           {history === null ? (
             <Skeleton className="mt-2 h-32" />
           ) : historySeries.length >= 2 ? (
             <div className="mt-2 h-36" role="img" aria-label={`BMI history chart with ${historySeries.length} points`}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={historySeries} margin={{ top: 8, right: 8, left: -12, bottom: 0 }}>
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(d: string) => d.slice(5)} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} />
-                  <Tooltip formatter={(v) => [v, "BMI"]} />
-                  <Line type="monotone" dataKey="value" stroke="#16a34a" strokeWidth={2} dot={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--text-secondary)" }} tickFormatter={(d: string) => d.slice(5)} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 10, fill: "var(--text-secondary)" }} domain={["auto", "auto"]} />
+                  <Tooltip
+                    formatter={(v) => [v, "BMI"]}
+                    contentStyle={{
+                      backgroundColor: "var(--bg-elevated)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "12px",
+                      fontSize: "12px",
+                      color: "var(--text)",
+                    }}
+                  />
+                  <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="t-body mt-2" style={{ color: "var(--text-secondary)" }}>
               No BMI history yet — calculate and save your BMI to track it over time.
             </p>
           )}
-        </Card>
+        </GlassPanel>
 
         {/* ---------------- BMR / TDEE / targets ---------------- */}
         <div className="space-y-4">
-          <Card>
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-              Your energy numbers
-            </h2>
+          <GlassPanel className="p-6">
+            <h2 className="t-card-heading">Your energy numbers</h2>
             {targets ? (
               <>
                 <dl className="mt-4 grid grid-cols-3 gap-3 text-center">
-                  <div className="rounded-xl bg-neutral-100 p-3 dark:bg-neutral-800">
-                    <dt className="text-xs text-neutral-500 dark:text-neutral-400">BMR</dt>
-                    <dd className="text-xl font-bold text-neutral-900 dark:text-neutral-100">{targets.bmr}</dd>
-                    <dd className="text-[11px] text-neutral-500">kcal / day</dd>
-                  </div>
-                  <div className="rounded-xl bg-neutral-100 p-3 dark:bg-neutral-800">
-                    <dt className="text-xs text-neutral-500 dark:text-neutral-400">TDEE</dt>
-                    <dd className="text-xl font-bold text-neutral-900 dark:text-neutral-100">{targets.tdee}</dd>
-                    <dd className="text-[11px] text-neutral-500">kcal / day</dd>
-                  </div>
-                  <div className="rounded-xl bg-green-100 p-3 dark:bg-green-900/30">
-                    <dt className="text-xs text-green-700 dark:text-green-300">Target</dt>
-                    <dd className="text-xl font-bold text-green-800 dark:text-green-200">{targets.calorie.targetKcal}</dd>
-                    <dd className="text-[11px] text-green-600 dark:text-green-400">kcal / day</dd>
-                  </div>
+                  <MetricCard label="BMR" value={<span className="t-numeral">{targets.bmr}</span>} subtext="kcal / day" />
+                  <MetricCard label="TDEE" value={<span className="t-numeral">{targets.tdee}</span>} subtext="kcal / day" />
+                  <MetricCard
+                    label="Target"
+                    value={<span className="t-numeral" style={{ color: "var(--accent)" }}>{targets.calorie.targetKcal}</span>}
+                    subtext="kcal / day"
+                  />
                 </dl>
-                <div className="mt-4 space-y-2 text-sm text-neutral-600 dark:text-neutral-400">
+                <div className="t-body mt-4 space-y-2" style={{ color: "var(--text-secondary)" }}>
                   <p>
-                    <strong className="text-neutral-800 dark:text-neutral-200">BMR</strong> (basal metabolic rate) is the energy your body uses at complete rest, estimated with the Mifflin-St Jeor equation from your age, sex, height, and weight.
+                    <strong className="font-semibold" style={{ color: "var(--text)" }}>BMR</strong> (basal metabolic rate) is the energy your body uses at complete rest, estimated with the Mifflin-St Jeor equation from your age, sex, height, and weight.
                   </p>
                   <p>
-                    <strong className="text-neutral-800 dark:text-neutral-200">TDEE</strong> (total daily energy expenditure) multiplies BMR by your activity level to estimate what you burn on a typical day.
+                    <strong className="font-semibold" style={{ color: "var(--text)" }}>TDEE</strong> (total daily energy expenditure) multiplies BMR by your activity level to estimate what you burn on a typical day.
                   </p>
                   <p>
-                    <strong className="text-neutral-800 dark:text-neutral-200">Target</strong> adjusts TDEE for your goal — a moderate deficit for weight loss, a small surplus for gain, or maintenance otherwise — with safe floors applied.
+                    <strong className="font-semibold" style={{ color: "var(--text)" }}>Target</strong> adjusts TDEE for your goal — a moderate deficit for weight loss, a small surplus for gain, or maintenance otherwise — with safe floors applied.
                   </p>
                 </div>
                 {targets.calorie.warnings.length > 0 && (
                   <ul className="mt-3 space-y-1">
                     {targets.calorie.warnings.map((w) => (
-                      <li key={w} role="note" className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                      <li
+                        key={w}
+                        role="note"
+                        className="t-meta rounded-xl border p-3"
+                        style={{
+                          borderColor: "color-mix(in srgb, var(--warning) 45%, transparent)",
+                          backgroundColor: "color-mix(in srgb, var(--warning) 10%, transparent)",
+                          color: "var(--text)",
+                        }}
+                      >
                         {w}
                       </li>
                     ))}
                   </ul>
                 )}
                 {targets.calorie.professionalGuidance && (
-                  <p role="note" className="mt-3 rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+                  <p
+                    role="note"
+                    className="t-meta mt-3 rounded-xl border p-3"
+                    style={{
+                      borderColor: "color-mix(in srgb, var(--accent) 45%, transparent)",
+                      backgroundColor: "color-mix(in srgb, var(--accent) 10%, transparent)",
+                      color: "var(--text)",
+                    }}
+                  >
                     {targets.calorie.professionalGuidance}
                   </p>
                 )}
               </>
             ) : (
-              <EmptyState
-                icon="🧮"
+              <EmptyStateLux
+                icon={<Calculator size={22} aria-hidden="true" />}
                 title="Add your measurements"
                 message="We need your height, weight, and age to estimate your energy needs."
                 action={
-                  <Link
-                    href="/onboarding"
-                    className="inline-flex min-h-[44px] items-center rounded-xl bg-brand px-6 font-semibold text-white hover:bg-brand-dark"
-                  >
+                  <LuxButton onClick={() => router.push("/onboarding")}>
                     Complete onboarding
-                  </Link>
+                  </LuxButton>
                 }
               />
             )}
-          </Card>
+          </GlassPanel>
 
           {targets && (
-            <Card>
-              <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                Daily macro targets
-              </h2>
-              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                Based on {targets.calorie.targetKcal} kcal / day.
+            <GlassPanel className="p-6">
+              <h2 className="t-card-heading">Daily macro targets</h2>
+              <p className="t-body mt-1" style={{ color: "var(--text-secondary)" }}>
+                Based on <span className="t-numeral">{targets.calorie.targetKcal}</span> kcal / day.
+                <LuxTooltip tip="Estimated with the Mifflin-St Jeor equation from your age, sex, height and weight, adjusted for your activity level and goal.">
+                  <Info size={13} aria-hidden="true" className="ml-1 inline cursor-help" style={{ color: "var(--text-secondary)" }} />
+                </LuxTooltip>
               </p>
               <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
@@ -387,16 +417,21 @@ export default function CalculatorsPage() {
                   { label: "Fat", value: `${targets.macros.fatG} g` },
                   { label: "Fiber", value: `${targets.macros.fiberG} g` },
                 ].map((m) => (
-                  <div key={m.label} className="rounded-xl bg-neutral-100 p-3 text-center dark:bg-neutral-800">
-                    <dt className="text-xs text-neutral-500 dark:text-neutral-400">{m.label}</dt>
-                    <dd className="text-lg font-bold text-neutral-900 dark:text-neutral-100">{m.value}</dd>
+                  <div
+                    key={m.label}
+                    className="rounded-xl border p-3 text-center"
+                    style={{ borderColor: "var(--border)", backgroundColor: "var(--bg-secondary)" }}
+                  >
+                    <dt className="t-meta">{m.label}</dt>
+                    <dd className="t-numeral mt-1 text-lg">{m.value}</dd>
                   </div>
                 ))}
               </dl>
-              <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
-                Water target: {(num(targets.waterMl) / 1000).toFixed(1)} L / day (35 ml per kg, adjusted for activity).
+              <p className="t-meta mt-3 flex items-center gap-1.5">
+                <Droplets size={13} aria-hidden="true" style={{ color: "var(--accent)" }} />
+                Water target: <span className="t-numeral">{(num(targets.waterMl) / 1000).toFixed(1)}</span> L / day (35 ml per kg, adjusted for activity).
               </p>
-            </Card>
+            </GlassPanel>
           )}
         </div>
       </div>

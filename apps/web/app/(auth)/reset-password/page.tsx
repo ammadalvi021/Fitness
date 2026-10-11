@@ -3,8 +3,10 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { CheckCircle2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { Button, Field, Input } from "@/components/ui";
+import { Field, Input } from "@/components/ui";
+import { LuxButton } from "@/components/luxury";
 
 function ResetInner() {
   const searchParams = useSearchParams();
@@ -44,16 +46,15 @@ function ResetInner() {
   if (!token) {
     return (
       <>
-        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-          Invalid reset link
-        </h1>
-        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+        <h1 className="t-card-heading text-2xl">Invalid reset link</h1>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">
           This password reset link is missing its token. Please request a new
           one.
         </p>
         <Link
           href="/forgot-password"
-          className="mt-6 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-brand px-4 font-semibold text-white hover:bg-brand-dark"
+          className="anim-press mt-6 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl px-4 font-semibold transition-colors"
+          style={{ backgroundColor: "var(--accent)", color: "var(--on-accent)" }}
         >
           Request a new link
         </Link>
@@ -64,18 +65,27 @@ function ResetInner() {
   if (done) {
     return (
       <>
-        <div aria-hidden="true" className="text-5xl">
-          ✅
-        </div>
-        <h1 className="mt-4 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-          Password updated
-        </h1>
-        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+        <span
+          aria-hidden="true"
+          className="flex h-14 w-14 items-center justify-center rounded-2xl"
+          style={{
+            color: "var(--success)",
+            backgroundColor:
+              "color-mix(in srgb, var(--success) 12%, transparent)",
+            border:
+              "1px solid color-mix(in srgb, var(--success) 38%, transparent)",
+          }}
+        >
+          <CheckCircle2 size={26} />
+        </span>
+        <h1 className="t-card-heading mt-4 text-2xl">Password updated</h1>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">
           You can now sign in with your new password.
         </p>
         <Link
           href="/login"
-          className="mt-6 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-brand px-4 font-semibold text-white hover:bg-brand-dark"
+          className="anim-press mt-6 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl px-4 font-semibold transition-colors"
+          style={{ backgroundColor: "var(--accent)", color: "var(--on-accent)" }}
         >
           Sign in
         </Link>
@@ -85,12 +95,19 @@ function ResetInner() {
 
   return (
     <>
-      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-        Choose a new password
-      </h1>
+      <h1 className="t-card-heading text-2xl">Choose a new password</h1>
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         {error && (
-          <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+          <p
+            role="alert"
+            className="rounded-xl px-4 py-3 text-sm"
+            style={{
+              color: "var(--error)",
+              backgroundColor:
+                "color-mix(in srgb, var(--error) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--error) 38%, transparent)",
+            }}
+          >
             {error}
           </p>
         )}
@@ -120,9 +137,9 @@ function ResetInner() {
             onChange={(e) => setConfirm(e.target.value)}
           />
         </Field>
-        <Button type="submit" size="lg" className="w-full" disabled={loading}>
+        <LuxButton type="submit" className="w-full" disabled={loading}>
           {loading ? "Updating…" : "Update password"}
-        </Button>
+        </LuxButton>
       </form>
     </>
   );
@@ -130,7 +147,7 @@ function ResetInner() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-neutral-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-[var(--text-secondary)]">Loading…</p>}>
       <ResetInner />
     </Suspense>
   );
