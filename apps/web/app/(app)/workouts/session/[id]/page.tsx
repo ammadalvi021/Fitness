@@ -55,9 +55,9 @@ import {
 } from "../../_shared";
 import { formatClock, parseLeadingNumber } from "../../_lux";
 import {
-  ExerciseAnimation,
-  hasExerciseAnimation,
-} from "@/components/ExerciseAnimation";
+  ExerciseIllustration,
+  hasExerciseIllustration,
+} from "@/components/ExerciseIllustration";
 
 type Phase = "loading" | "ready" | "missing" | "finishing" | "done";
 
@@ -710,26 +710,19 @@ export default function SessionPlayerPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            {/* Compact animated demonstration of the current exercise */}
-            {current.slug && hasExerciseAnimation(current.slug) ? (
+            {/* Three-stage static illustration of the current exercise */}
+            {current.slug && hasExerciseIllustration(current.slug) ? (
               <figure
-                className="mt-4 overflow-hidden rounded-2xl"
+                className="mt-4 overflow-hidden rounded-2xl p-3"
                 style={{
                   backgroundColor: "var(--bg-secondary)",
                   border: "1px solid var(--border)",
                 }}
               >
-                <ExerciseAnimation
+                <ExerciseIllustration
                   slug={current.slug}
-                  label={`${current.name} animated demonstration`}
-                  className="mx-auto aspect-video w-full max-w-sm"
+                  name={current.name ?? "Current exercise"}
                 />
-                <figcaption
-                  className="t-meta border-t px-4 py-2 text-center"
-                  style={{ borderColor: "var(--border)" }}
-                >
-                  Animated demonstration
-                </figcaption>
               </figure>
             ) : null}
 

@@ -1,83 +1,108 @@
 /**
- * EXERCISE_MEDIA — the honest human-video registry.
+ * EXERCISE_MEDIA — the human-demonstration asset registry.
  *
- * This registry is INTENTIONALLY EMPTY: every entry is
- * `{ videoUrl: null, posterUrl: null }` by design. Nobody on this project
- * can film or license 50 real human exercise videos right now, and this
- * file must never contain invented or placeholder URLs — a wrong or fake
- * demo teaches unsafe technique.
+ * HONESTY CONTRACT (enforced by test): every entry is
+ * `verificationStatus: "missing"` with null URLs by design. Nobody on this
+ * project can film, purchase, or license 50 real human exercise videos
+ * right now, and this file must never contain invented or placeholder
+ * URLs — a wrong or fake demo teaches unsafe technique.
  *
- * An entry is filled in ONLY when real, professionally-reviewed footage
- * exists for that exercise (see docs/exercise-video-prompts.md and
- * docs/exercise-media-workflow.md). Until then, <ExerciseMedia> falls back
- * to the labeled SVG "Animated demonstration" (interim) or the honest
- * "Video coming soon" panel — written technique instructions are always
- * rendered regardless.
+ * An entry may move to "verified" ONLY when ALL of these hold:
+ *   1. a real human-demonstration file exists at assetUrl and loads,
+ *   2. it demonstrates THIS exercise with correct form,
+ *   3. attribution + license expressly permit commercial app use,
+ *   4. reviewDate is set (qualified fitness-professional review).
  *
- * Slugs must match the animation slugs in
- * @/lib/exercise-animation/animations (exactly 50, enforced by test).
+ * Until then, <ExerciseMedia> renders the three-stage static
+ * illustration plus the always-present technique instructions.
+ *
+ * Slugs must match the seed exercise slugs (exactly 50, enforced by test).
  */
 
+export type ExerciseMediaType = 'gif' | 'webp' | 'mp4' | 'webm';
+
+export type VerificationStatus = 'missing' | 'pending-review' | 'verified';
+
 export interface ExerciseMediaEntry {
-  /** Direct URL to the reviewed human demonstration video (CDN-hosted), or null. */
-  videoUrl: string | null;
-  /** Poster/thumbnail image URL for the video, or null. */
+  /** Display name (from the exercise seed data). */
+  displayName: string;
+  /** Asset kind, or null when no asset exists. */
+  mediaType: ExerciseMediaType | null;
+  /** Direct URL / storage key of the verified human demo, or null. */
+  assetUrl: string | null;
+  /** Poster/thumbnail URL, or null. */
   posterUrl: string | null;
+  /** Who made / supplied the asset, or null. */
+  attribution: string | null;
+  /** License identifier permitting commercial app use, or null. */
+  license: string | null;
+  /** Lifecycle state — 'missing' for all 50 until real assets arrive. */
+  verificationStatus: VerificationStatus;
+  /** ISO date of the professional form review, or null. */
+  reviewDate: string | null;
 }
 
-const EMPTY: ExerciseMediaEntry = { videoUrl: null, posterUrl: null };
+const MISSING: Omit<ExerciseMediaEntry, 'displayName'> = {
+  mediaType: null,
+  assetUrl: null,
+  posterUrl: null,
+  attribution: null,
+  license: null,
+  verificationStatus: 'missing',
+  reviewDate: null,
+};
 
 export const EXERCISE_MEDIA: Record<string, ExerciseMediaEntry> = {
-  "ab-wheel-rollout": { ...EMPTY },
-  "barbell-back-squat": { ...EMPTY },
-  "barbell-bench-press": { ...EMPTY },
-  "barbell-curl": { ...EMPTY },
-  "barbell-overhead-press": { ...EMPTY },
-  "bench-dip": { ...EMPTY },
-  "bent-over-barbell-row": { ...EMPTY },
-  "bicycle-crunch": { ...EMPTY },
-  "bodyweight-squat": { ...EMPTY },
-  "bulgarian-split-squat": { ...EMPTY },
-  "burpee": { ...EMPTY },
-  "cat-cow": { ...EMPTY },
-  "chest-fly-machine": { ...EMPTY },
-  "childs-pose": { ...EMPTY },
-  "dead-bug": { ...EMPTY },
-  "dumbbell-bench-press": { ...EMPTY },
-  "dumbbell-bicep-curl": { ...EMPTY },
-  "dumbbell-overhead-press": { ...EMPTY },
-  "dumbbell-shrug": { ...EMPTY },
-  "face-pull": { ...EMPTY },
-  "front-raise": { ...EMPTY },
-  "glute-bridge": { ...EMPTY },
-  "goblet-squat": { ...EMPTY },
-  "hammer-curl": { ...EMPTY },
-  "hamstring-stretch": { ...EMPTY },
-  "hanging-knee-raise": { ...EMPTY },
-  "high-knees": { ...EMPTY },
-  "hip-flexor-stretch": { ...EMPTY },
-  "incline-push-up": { ...EMPTY },
-  "jump-rope": { ...EMPTY },
-  "jumping-jacks": { ...EMPTY },
-  "lat-pulldown": { ...EMPTY },
-  "lateral-raise": { ...EMPTY },
-  "leg-press": { ...EMPTY },
-  "mountain-climber": { ...EMPTY },
-  "one-arm-dumbbell-row": { ...EMPTY },
-  "overhead-tricep-extension": { ...EMPTY },
-  "plank": { ...EMPTY },
-  "pull-up": { ...EMPTY },
-  "push-up": { ...EMPTY },
-  "romanian-deadlift": { ...EMPTY },
-  "russian-twist": { ...EMPTY },
-  "seated-cable-row": { ...EMPTY },
-  "standing-calf-raise": { ...EMPTY },
-  "stationary-bike": { ...EMPTY },
-  "superman": { ...EMPTY },
-  "thoracic-rotation": { ...EMPTY },
-  "treadmill-run": { ...EMPTY },
-  "tricep-pushdown": { ...EMPTY },
-  "walking-lunge": { ...EMPTY },
+  'ab-wheel-rollout': { displayName: 'Ab Wheel Rollout', ...MISSING },
+  'barbell-back-squat': { displayName: 'Barbell Back Squat', ...MISSING },
+  'barbell-bench-press': { displayName: 'Barbell Bench Press', ...MISSING },
+  'barbell-curl': { displayName: 'Barbell Curl', ...MISSING },
+  'barbell-overhead-press': { displayName: 'Barbell Overhead Press', ...MISSING },
+  'bench-dip': { displayName: 'Bench Dip', ...MISSING },
+  'bent-over-barbell-row': { displayName: 'Bent-Over Barbell Row', ...MISSING },
+  'bicycle-crunch': { displayName: 'Bicycle Crunch', ...MISSING },
+  'bodyweight-squat': { displayName: 'Bodyweight Squat', ...MISSING },
+  'bulgarian-split-squat': { displayName: 'Bulgarian Split Squat', ...MISSING },
+  'burpee': { displayName: 'Burpee', ...MISSING },
+  'cat-cow': { displayName: 'Cat-Cow', ...MISSING },
+  'chest-fly-machine': { displayName: 'Machine Chest Fly', ...MISSING },
+  'childs-pose': { displayName: 'Child\'s Pose', ...MISSING },
+  'dead-bug': { displayName: 'Dead Bug', ...MISSING },
+  'dumbbell-bench-press': { displayName: 'Dumbbell Bench Press', ...MISSING },
+  'dumbbell-bicep-curl': { displayName: 'Dumbbell Bicep Curl', ...MISSING },
+  'dumbbell-overhead-press': { displayName: 'Dumbbell Overhead Press', ...MISSING },
+  'dumbbell-shrug': { displayName: 'Dumbbell Shrug', ...MISSING },
+  'face-pull': { displayName: 'Face Pull', ...MISSING },
+  'front-raise': { displayName: 'Front Raise', ...MISSING },
+  'glute-bridge': { displayName: 'Glute Bridge', ...MISSING },
+  'goblet-squat': { displayName: 'Goblet Squat', ...MISSING },
+  'hammer-curl': { displayName: 'Hammer Curl', ...MISSING },
+  'hamstring-stretch': { displayName: 'Standing Hamstring Stretch', ...MISSING },
+  'hanging-knee-raise': { displayName: 'Hanging Knee Raise', ...MISSING },
+  'high-knees': { displayName: 'High Knees', ...MISSING },
+  'hip-flexor-stretch': { displayName: 'Half-Kneeling Hip Flexor Stretch', ...MISSING },
+  'incline-push-up': { displayName: 'Incline Push-Up', ...MISSING },
+  'jump-rope': { displayName: 'Jump Rope', ...MISSING },
+  'jumping-jacks': { displayName: 'Jumping Jacks', ...MISSING },
+  'lat-pulldown': { displayName: 'Lat Pulldown', ...MISSING },
+  'lateral-raise': { displayName: 'Lateral Raise', ...MISSING },
+  'leg-press': { displayName: 'Leg Press', ...MISSING },
+  'mountain-climber': { displayName: 'Mountain Climber', ...MISSING },
+  'one-arm-dumbbell-row': { displayName: 'One-Arm Dumbbell Row', ...MISSING },
+  'overhead-tricep-extension': { displayName: 'Overhead Tricep Extension', ...MISSING },
+  'plank': { displayName: 'Plank', ...MISSING },
+  'pull-up': { displayName: 'Pull-Up', ...MISSING },
+  'push-up': { displayName: 'Push-Up', ...MISSING },
+  'romanian-deadlift': { displayName: 'Romanian Deadlift', ...MISSING },
+  'russian-twist': { displayName: 'Russian Twist', ...MISSING },
+  'seated-cable-row': { displayName: 'Seated Cable Row', ...MISSING },
+  'standing-calf-raise': { displayName: 'Standing Calf Raise', ...MISSING },
+  'stationary-bike': { displayName: 'Stationary Bike', ...MISSING },
+  'superman': { displayName: 'Superman', ...MISSING },
+  'thoracic-rotation': { displayName: 'Thoracic Rotation (Open Book)', ...MISSING },
+  'treadmill-run': { displayName: 'Treadmill Run', ...MISSING },
+  'tricep-pushdown': { displayName: 'Tricep Pushdown', ...MISSING },
+  'walking-lunge': { displayName: 'Walking Lunge', ...MISSING },
 };
 
 /** Returns the registry entry for a slug, or null when the slug is unknown. */
@@ -85,4 +110,34 @@ export function getExerciseMedia(slug: string): ExerciseMediaEntry | null {
   return Object.prototype.hasOwnProperty.call(EXERCISE_MEDIA, slug)
     ? EXERCISE_MEDIA[slug]
     : null;
+}
+
+/**
+ * Validate the whole registry. Returns problem descriptions; empty = clean.
+ * Rules:
+ *  - every entry needs a non-empty displayName,
+ *  - a non-null assetUrl requires mediaType, attribution, and license,
+ *  - verificationStatus 'verified' requires assetUrl + reviewDate + license,
+ *  - 'pending-review' requires assetUrl,
+ *  - no entry may claim verified/missing inconsistently.
+ */
+export function validateRegistry(): string[] {
+  const problems: string[] = [];
+  for (const [slug, e] of Object.entries(EXERCISE_MEDIA)) {
+    if (!e.displayName || !e.displayName.trim()) problems.push(slug + ': displayName missing');
+    const hasUrl = typeof e.assetUrl === 'string' && e.assetUrl.trim().length > 0;
+    const hasAttribution = typeof e.attribution === 'string' && e.attribution.trim().length > 0;
+    const hasLicense = typeof e.license === 'string' && e.license.trim().length > 0;
+    const hasReviewDate = typeof e.reviewDate === 'string' && e.reviewDate.trim().length > 0;
+    if (hasUrl && !e.mediaType) problems.push(slug + ': assetUrl without mediaType');
+    if (hasUrl && !hasAttribution) problems.push(slug + ': assetUrl without attribution');
+    if (hasUrl && !hasLicense) problems.push(slug + ': assetUrl without license');
+    if (e.verificationStatus === 'verified' && !hasUrl) problems.push(slug + ': verified without assetUrl');
+    if (e.verificationStatus === 'verified' && !hasReviewDate) problems.push(slug + ': verified without reviewDate');
+    if (e.verificationStatus === 'verified' && !hasLicense) problems.push(slug + ': verified without license');
+    if (e.verificationStatus === 'pending-review' && !hasUrl) problems.push(slug + ': pending-review without assetUrl');
+    if (e.verificationStatus === 'missing' && hasUrl) problems.push(slug + ': marked missing but has assetUrl');
+    if (e.mediaType && !hasUrl) problems.push(slug + ': mediaType without assetUrl');
+  }
+  return problems;
 }

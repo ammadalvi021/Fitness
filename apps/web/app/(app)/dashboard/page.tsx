@@ -47,7 +47,7 @@ import {
   ProgressRing,
   Tooltip as LuxTooltip,
 } from "@/components/luxury";
-import { ExerciseAnimation, hasExerciseAnimation } from "@/components/ExerciseAnimation";
+import { ExerciseIllustration, hasExerciseIllustration } from "@/components/ExerciseIllustration";
 import { useSession } from "../layout";
 
 /* ---------- defensive response shapes (API owned by other agents) -------- */
@@ -94,6 +94,7 @@ interface TodaysWorkout {
   exerciseCount: number;
   durationMin: number | null;
   firstSlug: string | null;
+  firstName: string | null;
 }
 
 /* ------------------------------- helpers -------------------------------- */
@@ -238,6 +239,7 @@ export default function DashboardPage() {
         exerciseCount: 0,
         durationMin: null,
         firstSlug: null,
+        firstName: null,
       };
     }
     const diffDays = Math.floor(
@@ -252,6 +254,7 @@ export default function DashboardPage() {
         exerciseCount: 0,
         durationMin: null,
         firstSlug: null,
+        firstName: null,
       };
     }
     const d = day as Record<string, unknown>;
@@ -266,6 +269,10 @@ export default function DashboardPage() {
       first && typeof first === "object" && typeof (first as Record<string, unknown>).slug === "string"
         ? ((first as Record<string, unknown>).slug as string)
         : null;
+    const firstName =
+      first && typeof first === "object" && typeof (first as Record<string, unknown>).name === "string"
+        ? ((first as Record<string, unknown>).name as string)
+        : null;
     const durationRaw = num(d.durationMin ?? d.durationMinutes);
     return {
       kind: "workout",
@@ -277,6 +284,7 @@ export default function DashboardPage() {
       exerciseCount: exercisesRaw.length,
       durationMin: durationRaw > 0 ? Math.round(durationRaw) : null,
       firstSlug,
+      firstName,
     };
   }, [workoutPlans, dateStr]);
 
@@ -417,8 +425,8 @@ export default function DashboardPage() {
   const waterPct = Math.min((waterMl / targets.waterMl) * 100, 100);
   const caloriePct = Math.min((consumed.kcal / targetKcal) * 100, 100);
   const remaining = targetKcal - Math.round(consumed.kcal);
-  const showAnimation =
-    todaysWorkout?.firstSlug != null && hasExerciseAnimation(todaysWorkout.firstSlug);
+  const showIllustration =
+    todaysWorkout?.firstSlug != null && hasExerciseIllustration(todaysWorkout.firstSlug);
 
   return (
     <div className="anim-page-enter">
@@ -697,9 +705,9 @@ export default function DashboardPage() {
             </div>
           ) : todaysWorkout ? (
             <div className="mt-3">
-              {showAnimation && todaysWorkout.firstSlug && (
+              {showIllustration && todaysWorkout.firstSlug && (
                 <MediaPanelLux label={todaysWorkout.label} className="mb-4">
-                  <ExerciseAnimation slug={todaysWorkout.firstSlug} label={todaysWorkout.label} />
+                  <ExerciseIllustration slug={todaysWorkout.firstSlug} name={todaysWorkout.firstName ?? todaysWorkout.label} />
                 </MediaPanelLux>
               )}
               <p className="t-card-heading">{todaysWorkout.label}</p>

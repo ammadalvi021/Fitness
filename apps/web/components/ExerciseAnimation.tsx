@@ -1,6 +1,13 @@
 /**
  * ExerciseAnimation — looping SVG stick-figure demo for an exercise.
  *
+ * ISOLATED / NOT CUSTOMER-FACING (as of the human-demonstration migration):
+ * no page, card, or player imports this component anymore. It is retained in
+ * the repo only as a reversible reference implementation; the pose engine
+ * (lib/exercise-animation/) remains the ACTIVE source for the customer-facing
+ * three-stage static <ExerciseIllustration>. Do not reintroduce this
+ * component into the UI without an explicit product decision.
+ *
  * Looks the exercise up by slug in ANIMATIONS; renders nothing when the
  * slug has no animation (never render broken). Animates with rAF; honors
  * prefers-reduced-motion by rendering a single static mid-pose instead.

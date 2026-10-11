@@ -29,9 +29,9 @@ import {
 } from "../_shared";
 import { luxDifficultyTone } from "../_lux";
 import {
-  ExerciseAnimation,
-  hasExerciseAnimation,
-} from "@/components/ExerciseAnimation";
+  ExerciseIllustration,
+  hasExerciseIllustration,
+} from "@/components/ExerciseIllustration";
 
 const ALL = "all";
 
@@ -273,16 +273,15 @@ export default function ExerciseLibraryPage() {
                   aria-label={`View ${e.name} technique guide`}
                 >
                   <GlassPanel className="anim-hover-lift flex h-full flex-col gap-2.5 p-4">
-                    {hasExerciseAnimation(e.slug) ? (
+                    {hasExerciseIllustration(e.slug) ? (
                       <div
-                        className="flex justify-center rounded-xl py-1"
+                        className="rounded-xl px-2 py-1.5"
                         style={{ backgroundColor: "var(--bg-secondary)" }}
                       >
-                        <ExerciseAnimation
+                        <ExerciseIllustration
                           slug={e.slug}
-                          label={`${e.name} animation`}
-                          animated={false}
-                          className="h-20 w-20"
+                          name={e.name}
+                          compact
                         />
                       </div>
                     ) : null}
