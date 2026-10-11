@@ -27,6 +27,10 @@ import {
   difficultyTone,
   pickArray,
 } from "../_shared";
+import {
+  ExerciseAnimation,
+  hasExerciseAnimation,
+} from "@/components/ExerciseAnimation";
 
 const ALL = "all";
 
@@ -234,6 +238,16 @@ export default function ExerciseLibraryPage() {
                   aria-label={`View ${e.name} technique guide`}
                 >
                   <Card className="flex h-full flex-col gap-2 transition-shadow hover:shadow-md">
+                    {hasExerciseAnimation(e.slug) ? (
+                      <div className="flex justify-center rounded-xl bg-neutral-50 py-1 dark:bg-neutral-800/40">
+                        <ExerciseAnimation
+                          slug={e.slug}
+                          label={`${e.name} animation`}
+                          animated={false}
+                          className="h-20 w-20"
+                        />
+                      </div>
+                    ) : null}
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">
                         {e.name}

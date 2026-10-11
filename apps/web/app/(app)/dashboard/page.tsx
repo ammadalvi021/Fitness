@@ -260,7 +260,11 @@ export default function DashboardPage() {
   }
 
   // New user without enough profile data for targets: guide to onboarding.
+  // If onboarding was already completed, the profile is just missing the
+  // essentials (height, weight, date of birth) — say so explicitly instead
+  // of pretending onboarding never happened.
   if (!targets) {
+    const started = Boolean(profile.onboardingCompletedAt);
     return (
       <div>
         <PageHeader
@@ -269,14 +273,18 @@ export default function DashboardPage() {
         />
         <EmptyState
           icon="🌱"
-          title="Let's set up your plan"
-          message="Tell us a little about yourself and your goals so we can calculate your calorie and macro targets."
+          title={started ? "Almost there — a few details missing" : "Let's set up your plan"}
+          message={
+            started
+              ? "Your height, weight, or date of birth is missing, so your calorie and macro targets can't be calculated yet. Add them to unlock your plan."
+              : "Tell us a little about yourself and your goals so we can calculate your calorie and macro targets."
+          }
           action={
             <Link
               href="/onboarding"
               className="inline-flex min-h-[44px] items-center rounded-xl bg-brand px-6 font-semibold text-white hover:bg-brand-dark"
             >
-              Start onboarding
+              {started ? "Complete your profile" : "Start onboarding"}
             </Link>
           }
         />

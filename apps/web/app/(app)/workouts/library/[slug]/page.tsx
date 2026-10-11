@@ -3,10 +3,11 @@
 /**
  * /workouts/library/[slug] — exercise technique guide.
  *
- * MEDIA AREA FIRST: the library is text-first (mediaType is always 'none'),
- * so we render an honest placeholder panel — never an <img>/<video> with a
- * broken or fake URL. Real media only renders when mediaType + mediaUrl are
- * both present and non-empty.
+ * MEDIA AREA FIRST: the library shows a generated looping stick-figure
+ * animation per exercise (see @/lib/exercise-animation) — never an
+ * <img>/<video> with a broken or fake URL. Real media only renders when
+ * mediaType + mediaUrl are both present and non-empty; the honest
+ * placeholder remains as the final fallback.
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -26,6 +27,10 @@ import {
   difficultyTone,
   pickObject,
 } from "../../_shared";
+import {
+  ExerciseAnimation,
+  hasExerciseAnimation,
+} from "@/components/ExerciseAnimation";
 
 function MediaPanel({ exercise }: { exercise: Exercise }) {
   const hasMedia =
@@ -55,6 +60,19 @@ function MediaPanel({ exercise }: { exercise: Exercise }) {
           src={exercise.mediaUrl as string}
           alt={`${exercise.name} demonstration`}
           className="aspect-video w-full object-cover"
+        />
+      </div>
+    );
+  }
+
+  // Generated looping stick-figure demo (no database media needed).
+  if (hasExerciseAnimation(exercise.slug)) {
+    return (
+      <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-800/40">
+        <ExerciseAnimation
+          slug={exercise.slug}
+          label={`${exercise.name} animated demonstration`}
+          className="mx-auto aspect-video w-full max-w-md"
         />
       </div>
     );

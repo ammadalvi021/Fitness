@@ -137,6 +137,25 @@ export default function OnboardingPage() {
   const hasSafetyFlag =
     isPregnant || isBreastfeeding || eatingDisorderRisk || isMinor();
 
+  // Basics (step 0) is the foundation every target depends on: without a
+  // valid height, weight, and date of birth the dashboard and nutrition
+  // pages cannot compute anything personal. Block progressing until they
+  // are present — a silent skip here produced "Invalid onboarding data"
+  // confusion and empty dashboards in the wild.
+  function validDob(): boolean {
+    if (!dob) return false;
+    const d = new Date(dob);
+    return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
+  }
+  const basicsValid =
+    resolvedHeightCm() !== undefined &&
+    resolvedWeightKg() !== undefined &&
+    validDob();
+  const basicsMissing: string[] = [];
+  if (resolvedHeightCm() === undefined) basicsMissing.push("height");
+  if (resolvedWeightKg() === undefined) basicsMissing.push("weight");
+  if (!validDob()) basicsMissing.push("date of birth");
+
   function buildPayload(): Record<string, unknown> {
     const p: Record<string, unknown> = {};
     if (displayName.trim()) p.displayName = displayName.trim();
@@ -467,13 +486,20 @@ export default function OnboardingPage() {
           </div>
         )}
 
+        {step === 0 && !basicsValid && (
+          <p role="alert" className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+            Please add your {basicsMissing.join(", ")} — your calorie and macro
+            targets can't be calculated without them.
+          </p>
+        )}
         {/* Nav buttons */}
         <div className="mt-8 flex items-center justify-between gap-3">
           <Button
             variant="ghost"
             onClick={skip}
-            disabled={saving}
+            disabled={saving || (step === 0 && !basicsValid)}
             aria-label={step === STEPS.length - 1 ? "Skip review and finish" : `Skip ${STEPS[step]} step`}
+            title={step === 0 && !basicsValid ? "Height, weight, and date of birth are required to continue" : undefined}
           >
             Skip for now
           </Button>
@@ -483,7 +509,7 @@ export default function OnboardingPage() {
                 Back
               </Button>
             )}
-            <Button onClick={next} disabled={saving}>
+            <Button onClick={next} disabled={saving || (step === 0 && !basicsValid)}>
               {saving ? "Saving…" : step === STEPS.length - 1 ? "Finish" : "Continue"}
             </Button>
           </div>
