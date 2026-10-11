@@ -847,19 +847,13 @@ export default function NutritionDiaryPage() {
             </GlassPanel>
           ))}
         </div>
-      ) : entries.length === 0 ? (
-        <EmptyStateLux
-          title="No foods logged yet"
-          message="Log what you ate and your calories, macros, and fiber will add up here."
-          action={
-            <LuxButton onClick={() => openAdd('breakfast')}>
-              <Plus size={16} aria-hidden="true" />
-              Log your first food
-            </LuxButton>
-          }
-        />
       ) : (
         <div className="space-y-4">
+          {entries.length === 0 && (
+            <p className="t-meta rounded-xl border border-dashed px-4 py-3 text-center" style={{ borderColor: 'var(--border)' }}>
+              Nothing logged yet — tap <strong>Add food</strong> under any meal to start.
+            </p>
+          )}
           {MEAL_ORDER.map((mt) => {
             const list = entriesByMeal.get(mt) ?? [];
             const mealKcal = Math.round(list.reduce((n, e) => n + num(e.kcal), 0));

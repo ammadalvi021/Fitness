@@ -537,7 +537,13 @@ export default function MealPlansPage() {
             color: 'var(--text)',
           }}
         >
-          {error}
+          <p>{error}</p>
+          {/busy|high demand|temporary/i.test(error) && (
+            <p className="mt-1 opacity-80">
+              Tip: switch to <strong>Template</strong> above for an instant plan
+              that respects your diet and allergies — no AI needed.
+            </p>
+          )}
         </div>
       )}
 

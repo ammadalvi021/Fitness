@@ -54,6 +54,20 @@ while ((m = entryRe.exec(src)) !== null) {
 while ((m = inlineRe.exec(src)) !== null) {
   if (missingSlugs.has(m[1])) continue; // already captured as MISSING
   const body = m[3];
+  // ownerGif('<slug>') spread: owner-supplied verified GIF at the
+  // conventional public path. Resolve without hardcoding per-slug data.
+  const ownerGif = body.match(/\.\.\.ownerGif\('([a-z0-9-]+)'\)/);
+  if (ownerGif) {
+    entries.push({
+      slug: m[1],
+      displayName: m[2].replace(/\\'/g, "'"),
+      mediaType: "gif",
+      assetUrl: `/exercise-gifs/${ownerGif[1]}.gif`,
+      verificationStatus: "verified",
+      reviewDate: "2026-10-11",
+    });
+    continue;
+  }
   entries.push({
     slug: m[1],
     displayName: m[2].replace(/\\'/g, "'"),
@@ -109,13 +123,26 @@ if (verified.length) {
     "## Verified assets",
     "",
     "None. No human GIF, WebP, MP4, or WebM demonstration exists for any",
-    "exercise yet. The registry is intentionally empty: every entry is",
-    "`verificationStatus: \"missing\"` with null URLs by design.",
+    "exercise yet.",
     "",
-    "Until real, professionally-reviewed footage is imported (see",
-    "docs/exercise-media-import.md), each exercise shows a three-stage",
-    "static illustration captioned “Illustration — human demonstration",
-    "coming soon”, plus the full written technique instructions.",
+    "Until real footage is imported (see docs/exercise-media-import.md),",
+    "each exercise shows a three-stage static illustration captioned",
+    "“Illustration — human demonstration coming soon”, plus the full",
+    "written technique instructions.",
+    ""
+  );
+}
+
+if (verified.length) {
+  lines.push(
+    "## Provenance note",
+    "",
+    "The verified GIFs above are AI-generated pose-transition prototypes",
+    "created and supplied by the app owner (2026-10-11), integrated per",
+    "explicit owner direction. They are NOT motion-captured footage and",
+    "their exercise technique has NOT been independently validated by a",
+    "qualified fitness professional. Replace with professionally-reviewed",
+    "footage when available.",
     ""
   );
 }

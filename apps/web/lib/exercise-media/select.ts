@@ -34,15 +34,34 @@ function hasIllustrationSource(slug: string): boolean {
 
 /**
  * True only when the registry entry is a genuinely verified human asset:
- * status "verified" AND a real asset URL. Anything less is not footage.
+ * status "verified" AND a real asset URL AND a license AND a professional
+ * review date. Anything less is not approved footage.
  */
 export function hasVerifiedAsset(slug: string): boolean {
   const entry = EXERCISE_MEDIA[slug];
   return (
     !!entry &&
     entry.verificationStatus === "verified" &&
-    hasText(entry.assetUrl)
+    hasText(entry.assetUrl) &&
+    hasText(entry.license) &&
+    hasText(entry.reviewDate)
   );
+}
+
+/**
+ * A database-provided asset (mediaType/mediaUrl) counts ONLY when the
+ * registry entry for the slug is verified with license + review metadata.
+ * An unverified DB URL can never bypass the registry's safety and licence
+ * rules — the registry is the single gate for presenting approved demos.
+ */
+export function hasVerifiedDbAsset(
+  slug: string,
+  mediaType?: string | null,
+  mediaUrl?: string | null
+): boolean {
+  const dbType = (mediaType ?? "").trim().toLowerCase();
+  if (!DB_ASSET_TYPES.has(dbType) || !hasText(mediaUrl)) return false;
+  return hasVerifiedAsset(slug);
 }
 
 export function selectMediaSource(
@@ -53,10 +72,9 @@ export function selectMediaSource(
   // Verified registry asset wins — the curated, professionally-reviewed path.
   if (hasVerifiedAsset(slug)) return "video";
 
-  // Database-provided asset (mediaType/mediaUrl set through an admin path).
-  // "video" is the legacy value (implies mp4); gif/webp/mp4/webm are explicit.
-  const dbType = (mediaType ?? "").trim().toLowerCase();
-  if (DB_ASSET_TYPES.has(dbType) && hasText(mediaUrl)) return "video";
+  // Database asset: only when the registry entry is verified. "video" is
+  // the legacy mediaType value (implies mp4); gif/webp/mp4/webm are explicit.
+  if (hasVerifiedDbAsset(slug, mediaType, mediaUrl)) return "video";
 
   // Static three-stage illustration from the pose engine — honest, labeled,
   // never passed off as human footage.

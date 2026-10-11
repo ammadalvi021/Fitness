@@ -70,6 +70,63 @@ export function aiStatus(): AIStatus {
 
 const REQUEST_TIMEOUT_MS = 60_000;
 
+/**
+ * Typed AI provider failure. `userMessage` is safe to show in the UI —
+ * it never contains raw provider JSON. `detail` carries the raw body for
+ * server-side logs only and must never be sent to the client.
+ */
+export class AIProviderError extends Error {
+  readonly httpStatus: number;
+  readonly userMessage: string;
+  readonly retryable: boolean;
+  readonly detail: string;
+  constructor(httpStatus: number, userMessage: string, retryable: boolean, detail = "") {
+    super(`AI provider HTTP ${httpStatus}: ${userMessage}`);
+    this.name = "AIProviderError";
+    this.httpStatus = httpStatus;
+    this.userMessage = userMessage;
+    this.retryable = retryable;
+    this.detail = detail;
+  }
+}
+
+/** Friendly, non-technical message for a provider HTTP status. */
+export function friendlyAIMessage(httpStatus: number): { userMessage: string; retryable: boolean } {
+  if (httpStatus === 429 || httpStatus === 503) {
+    return {
+      userMessage:
+        "The AI service is busy right now (high demand). Please try again in a minute or two.",
+      retryable: true,
+    };
+  }
+  if (httpStatus === 401 || httpStatus === 403) {
+    return {
+      userMessage:
+        "The AI API key was rejected. Check that AI_API_KEY is set correctly in the Render dashboard.",
+      retryable: false,
+    };
+  }
+  if (httpStatus >= 500) {
+    return {
+      userMessage: "The AI service had a temporary problem. Please try again.",
+      retryable: true,
+    };
+  }
+  if (httpStatus === 400) {
+    return { userMessage: "The AI request was invalid. Please try again.", retryable: false };
+  }
+  return { userMessage: "AI generation failed. Please try again.", retryable: false };
+}
+
+/**
+ * Extract a UI-safe message from any AI failure. Provider internals
+ * (raw JSON bodies, status dumps) never reach the user.
+ */
+export function aiUserMessage(err: unknown, fallback: string): string {
+  if (err instanceof AIProviderError) return err.userMessage;
+  return fallback;
+}
+
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string | Array<Record<string, unknown>>;
@@ -83,39 +140,56 @@ async function chatCompletion(cfg: AIConfig, payload: {
   responseFormat?: { type: string };
 }): Promise<string> {
   const url = `${cfg.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: payload.model,
-        messages: payload.messages,
-        max_tokens: payload.maxTokens ?? 2000,
-        temperature: payload.temperature ?? 0.2,
-        ...(payload.responseFormat ? { response_format: payload.responseFormat } : {}),
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`AI provider HTTP ${res.status}: ${body.slice(0, 300)}`);
+  // One automatic retry for transient provider failures (429/503/5xx):
+  // a single overloaded-model hiccup shouldn't fail a whole 7-day plan.
+  const maxAttempts = 2;
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: payload.model,
+          messages: payload.messages,
+          max_tokens: payload.maxTokens ?? 2000,
+          temperature: payload.temperature ?? 0.2,
+          ...(payload.responseFormat ? { response_format: payload.responseFormat } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        const { userMessage, retryable } = friendlyAIMessage(res.status);
+        throw new AIProviderError(res.status, userMessage, retryable, body.slice(0, 500));
+      }
+      const data = (await res.json()) as {
+        choices?: Array<{ message?: { content?: string | null } }>;
+      };
+      const content = data?.choices?.[0]?.message?.content;
+      if (!content || typeof content !== "string") {
+        throw new Error("AI provider returned an empty response");
+      }
+      return content;
+    } catch (err) {
+      lastError = err;
+      const retryable = err instanceof AIProviderError ? err.retryable : false;
+      if (retryable && attempt < maxAttempts) {
+        // Brief backoff before the single retry.
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string | null } }>;
-    };
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content || typeof content !== "string") {
-      throw new Error("AI provider returned an empty response");
-    }
-    return content;
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastError instanceof Error ? lastError : new Error("AI request failed");
 }
 
 /** Extract a JSON object from a model reply, tolerating ```json fences. */
@@ -268,7 +342,7 @@ export async function analyzeFoodImage(
       overallConfidence: null,
       disclaimer: FOOD_SCAN_DISCLAIMER,
       model: cfg.visionModel,
-      error: err instanceof Error ? err.message : "Food scan failed",
+      error: aiUserMessage(err, "Food scan failed"),
     };
   }
 }
@@ -444,7 +518,7 @@ ${profile.halalOnly ? `- Halal only: no pork, no alcohol; meat must be labelled 
 
     return { status: "ok", days, warnings: warnings.length ? warnings : undefined };
   } catch (err) {
-    return { status: "error", error: err instanceof Error ? err.message : "Meal plan generation failed" };
+    return { status: "error", error: aiUserMessage(err, "Meal plan generation failed") };
   }
 }
 
@@ -561,7 +635,7 @@ ${input.maxKcal ? `- Each recipe must be at most ${input.maxKcal} kcal per servi
     }
     return { status: "ok", recipes };
   } catch (err) {
-    return { status: "error", error: err instanceof Error ? err.message : "Recipe suggestion failed" };
+    return { status: "error", error: aiUserMessage(err, "Recipe suggestion failed") };
   }
 }
 
@@ -622,6 +696,6 @@ export async function coachReply(
     }
     return { status: "ok", reply };
   } catch (err) {
-    return { status: "error", error: err instanceof Error ? err.message : "Coach reply failed" };
+    return { status: "error", error: aiUserMessage(err, "Coach reply failed") };
   }
 }

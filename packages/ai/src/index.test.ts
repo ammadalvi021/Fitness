@@ -77,3 +77,68 @@ describe("extractJsonObject", () => {
     expect(() => extractJsonObject("sorry, no food here")).toThrow();
   });
 });
+
+describe("AIProviderError + friendlyAIMessage", () => {
+  it("maps 503 to a friendly retryable busy message", async () => {
+    const { AIProviderError, friendlyAIMessage, aiUserMessage } = await import("./index");
+    const { userMessage, retryable } = friendlyAIMessage(503);
+    expect(retryable).toBe(true);
+    expect(userMessage).toMatch(/busy/i);
+    expect(userMessage).not.toMatch(/\{.*"code"/);
+
+    const err = new AIProviderError(503, userMessage, retryable, '{"code":503}');
+    expect(aiUserMessage(err, "fallback")).toBe(userMessage);
+    // Raw provider JSON never leaks through the user message.
+    expect(aiUserMessage(err, "fallback")).not.toContain('"code"');
+  });
+
+  it("maps 429 as retryable and 401 as a key problem", async () => {
+    const { friendlyAIMessage } = await import("./index");
+    expect(friendlyAIMessage(429).retryable).toBe(true);
+    const auth = friendlyAIMessage(401);
+    expect(auth.retryable).toBe(false);
+    expect(auth.userMessage).toMatch(/API key/i);
+  });
+
+  it("aiUserMessage falls back for non-provider errors", async () => {
+    const { aiUserMessage } = await import("./index");
+    expect(aiUserMessage(new Error("boom"), "fallback")).toBe("fallback");
+    expect(aiUserMessage("nope", "fallback")).toBe("fallback");
+  });
+
+  it("retries once on a transient 503 then succeeds", async () => {
+    process.env.AI_API_KEY = "test-key";
+    process.env.AI_MODEL = "test-model";
+    const { generateMealPlanAI } = await import("./index");
+    const okBody = JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ days: [] }) } }],
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    fetchSpy
+      .mockResolvedValueOnce(new Response('{"error":"busy"}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(okBody, { status: 200 }));
+    const res = await generateMealPlanAI({}, { calorieTarget: 2000 });
+    // Days fail schema validation (empty) but the point is the 503 was
+    // retried instead of surfacing raw provider JSON.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    if (res.status === "error") {
+      expect(res.error).not.toMatch(/AI provider HTTP/);
+    }
+  });
+
+  it("surfaces a friendly message (not raw JSON) when the provider stays down", async () => {
+    process.env.AI_API_KEY = "test-key";
+    process.env.AI_MODEL = "test-model";
+    const { generateMealPlanAI } = await import("./index");
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response('{"error":{"code":503}}', { status: 503 }));
+    const res = await generateMealPlanAI({}, { calorieTarget: 2000 });
+    expect(res.status).toBe("error");
+    if (res.status === "error") {
+      expect(res.error).toMatch(/busy/i);
+      expect(res.error).not.toContain('"code"');
+    }
+    expect(fetchSpy).toHaveBeenCalledTimes(2); // initial + one retry
+  });
+});

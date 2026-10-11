@@ -85,11 +85,27 @@ interface ResolvedAsset {
   attribution: string | null;
 }
 
+/** MIME type for a <source> element — never declare everything as video/mp4. */
+export function assetMimeType(type: ExerciseMediaType): string {
+  switch (type) {
+    case "mp4":
+      return "video/mp4";
+    case "webm":
+      return "video/webm";
+    case "gif":
+      return "image/gif";
+    case "webp":
+      return "image/webp";
+  }
+}
+
 /**
  * Resolve a VERIFIED human asset for a slug, or null. Registry entries count
- * only when verificationStatus === "verified" with a real URL; database
- * media counts for the supported types with a non-empty URL. Nothing is
- * invented here — null means "no human asset".
+ * only when verificationStatus === "verified" with a real URL, a license,
+ * and a professional review date. Database media counts ONLY when the
+ * registry entry for the slug is verified — an unverified DB URL can never
+ * bypass the registry's safety and licence rules. Nothing is invented here
+ * — null means "no human asset".
  */
 export function resolveVerifiedAsset(
   slug: string,
@@ -97,9 +113,13 @@ export function resolveVerifiedAsset(
   mediaUrl?: string | null
 ): ResolvedAsset | null {
   const entry = getExerciseMedia(slug);
-  if (
-    entry &&
+  const registryVerified =
+    !!entry &&
     entry.verificationStatus === "verified" &&
+    !!entry.license?.trim() &&
+    !!entry.reviewDate?.trim();
+  if (
+    registryVerified &&
     entry.mediaType &&
     SUPPORTED_TYPES.includes(entry.mediaType) &&
     entry.assetUrl &&
@@ -112,22 +132,17 @@ export function resolveVerifiedAsset(
       attribution: entry.attribution?.trim() || null,
     };
   }
+  // DB path: allowed only behind a verified registry entry (same gate).
   const dbType = (mediaType ?? "").trim().toLowerCase();
-  if (
-    (SUPPORTED_TYPES as string[]).includes(dbType) &&
-    mediaUrl &&
-    mediaUrl.trim()
-  ) {
+  const normalizedDbType =
+    dbType === "video" ? "mp4" : (SUPPORTED_TYPES as string[]).includes(dbType) ? (dbType as ExerciseMediaType) : null;
+  if (registryVerified && normalizedDbType && mediaUrl && mediaUrl.trim()) {
     return {
       url: mediaUrl.trim(),
-      type: dbType as ExerciseMediaType,
+      type: normalizedDbType,
       posterUrl: null,
-      attribution: null,
+      attribution: entry?.attribution?.trim() || null,
     };
-  }
-  // Legacy: mediaType === "video" implies mp4.
-  if (dbType === "video" && mediaUrl && mediaUrl.trim()) {
-    return { url: mediaUrl.trim(), type: "mp4", posterUrl: null, attribution: null };
   }
   return null;
 }
@@ -136,14 +151,18 @@ export function resolveVerifiedAsset(
 
 function RealVideoPlayer({
   videoUrl,
+  videoType,
   posterUrl,
   name,
   reduceMotion,
+  onError,
 }: {
   videoUrl: string;
+  videoType: ExerciseMediaType;
   posterUrl: string | null;
   name: string;
   reduceMotion: boolean;
+  onError: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -197,8 +216,11 @@ function RealVideoPlayer({
           loop={seamlessLoop}
           muted={seamlessLoop}
           aria-label={`${name} demonstration video`}
+          onError={onError}
         >
-          {sourceAttached ? <source src={videoUrl} type="video/mp4" /> : null}
+          {sourceAttached ? (
+            <source src={videoUrl} type={assetMimeType(videoType)} />
+          ) : null}
           Your browser does not support the video element.
         </video>
         {!sourceAttached ? (
@@ -273,6 +295,16 @@ function AnimatedImageAsset({
   // asks — show the poster (or a play affordance) instead.
   const [playRequested, setPlayRequested] = useState(!reduceMotion);
   const [loaded, setLoaded] = useState(false);
+  // Reset when the asset changes (client-side exercise navigation reuses
+  // this component instance — stale loaded/play state must not persist).
+  const seenUrl = useRef(url);
+  useEffect(() => {
+    if (seenUrl.current !== url) {
+      seenUrl.current = url;
+      setPlayRequested(!reduceMotion);
+      setLoaded(false);
+    }
+  }, [url, reduceMotion]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-800/40">
@@ -480,6 +512,16 @@ export function ExerciseMedia({
   const asset = resolveVerifiedAsset(slug, mediaType, mediaUrl);
   // A broken asset URL falls through to the illustration — never a broken image.
   const [assetFailed, setAssetFailed] = useState(false);
+  // Reset a stale failure when navigating between exercises: a 404 on one
+  // exercise must not blank the media of the next.
+  const assetKey = asset ? `${slug}:${asset.url}` : slug;
+  const seenAssetKey = useRef(assetKey);
+  useEffect(() => {
+    if (seenAssetKey.current !== assetKey) {
+      seenAssetKey.current = assetKey;
+      setAssetFailed(false);
+    }
+  }, [assetKey]);
 
   const showAsset = source === "video" && asset && !assetFailed;
 
@@ -488,9 +530,11 @@ export function ExerciseMedia({
       {showAsset && (asset.type === "mp4" || asset.type === "webm") ? (
         <RealVideoPlayer
           videoUrl={asset.url}
+          videoType={asset.type}
           posterUrl={asset.posterUrl}
           name={name}
           reduceMotion={reduceMotion}
+          onError={() => setAssetFailed(true)}
         />
       ) : showAsset && (asset.type === "gif" || asset.type === "webp") ? (
         <AnimatedImageAsset

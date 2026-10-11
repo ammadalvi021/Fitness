@@ -39,26 +39,50 @@ FitFusion AI exercise library, honestly and lawfully.
       "mediaType": "mp4",
       "poster": "push-up-poster.jpg",
       "attribution": "Filmed by FitFusion Media, 2026",
-      "license": "Proprietary — commissioned work, commercial app use granted"
+      "license": "Proprietary — commissioned work, commercial app use granted",
+      "source": "in-house shoot, 2026-11-01"
     },
     {
-      "file": "bodyweight-squat.gif",
+      "url": "https://cdn.example.com/gifs/bodyweight-squat.gif",
       "slug": "bodyweight-squat",
       "attribution": "Jane Doe / FitStock",
-      "license": "FitStock Commercial License #12345"
+      "license": "FitStock Commercial License #12345",
+      "source": "FitStock commercial library"
     }
   ]
 }
 ```
 
-- `file` (required): filename inside `assetsDir`.
+- `file` (required unless `url` is given): filename inside `assetsDir`.
+- `url` (required unless `file` is given): remote `https://` asset URL
+  (CDN). The file content can't be inspected remotely, so remote assets
+  always carry a warning and need mandatory professional review.
 - `slug` (required): one of the 50 exercise slugs (see the registry).
+  Duplicates and unknown slugs are rejected.
 - `mediaType` (optional): `gif` | `webp` | `mp4` | `webm`. Must match the
-  file extension (a mismatch is a warning; the extension wins).
+  file extension / URL path (a mismatch is a warning; the extension wins).
 - `poster` (optional): thumbnail image (`.jpg` / `.jpeg` / `.png` / `.webp`).
 - `attribution` (required): who made or supplied the asset.
 - `license` (required): the license identifier — it must expressly permit
   commercial use inside a fitness app.
+- `source` (required): where the asset came from (shoot date, vendor,
+  library name). Recorded in the patch for auditability.
+
+## Validation performed by the script
+
+1. File exists (local) or valid `https://` URL with an allowed extension
+   (remote).
+2. Extension is one of `.gif` `.webp` `.mp4` `.webm`.
+3. **Magic-byte check** (local files): the file's first bytes must match its
+   claimed type (GIF87a/89a, RIFF…WEBP, ftyp, EBML). A renamed executable
+   or corrupt download is rejected even if the extension looks right.
+4. File size ≤ 15 MB (local files).
+5. Slug is one of the 50 registry slugs; no duplicates in the manifest.
+6. Non-empty `attribution`, `license`, and `source`.
+7. Poster, if given, exists and has an image extension.
+
+The report covers **all 50 registry exercises**, listing which are in the
+manifest and which are still missing media.
 
 ## Licensing rules
 
