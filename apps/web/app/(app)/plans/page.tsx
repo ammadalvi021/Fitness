@@ -5,7 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { PLANS, getPlan, type PlanDefinition, type PlanId } from "@/lib/site";
 import { Badge, Button, Skeleton } from "@/components/ui";
 import { GlassPanel, LuxBadge, PlanCard } from "@/components/luxury";
-import { useSession } from "../layout";
+import { useSession } from "@/components/session";
 
 type BillingProvider = "none" | "sandbox" | "stripe";
 

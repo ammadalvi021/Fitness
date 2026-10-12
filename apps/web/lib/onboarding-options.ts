@@ -87,3 +87,24 @@ export const DAY_OPTIONS: string[] = [
   "Saturday",
   "Sunday",
 ];
+
+/** V18 — country options. Values must be ISO-3166 alpha-2 (OnboardingSchema.country). */
+export const COUNTRY_OPTIONS: OptionItem[] = [
+  { value: "", label: "Select country…" },
+  { value: "PK", label: "Pakistan" },
+  { value: "IN", label: "India" },
+  { value: "US", label: "United States" },
+  { value: "UK", label: "United Kingdom" },
+  { value: "AE", label: "United Arab Emirates" },
+  { value: "SA", label: "Saudi Arabia" },
+  { value: "CA", label: "Canada" },
+  { value: "AU", label: "Australia" },
+];
+
+/** V18 — app language options. Values must match OnboardingSchema.language. */
+export const LANGUAGE_OPTIONS: OptionItem[] = [
+  { value: "", label: "Select language…" },
+  { value: "en", label: "English" },
+  { value: "ur", label: "اردو (Urdu)" },
+  { value: "roman-ur", label: "Roman Urdu" },
+];

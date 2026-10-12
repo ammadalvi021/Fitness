@@ -11,7 +11,7 @@ import {
   ProgressRing,
 } from "@/components/luxury";
 import { num } from "@/lib/targets";
-import { useSession } from "../layout";
+import { useSession } from "@/components/session";
 
 const GOAL_OPTIONS = [
   { value: "lose", label: "Lose weight" },

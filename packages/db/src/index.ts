@@ -38,4 +38,8 @@ export type {
   CoachConversation,
   CoachMessage,
   DataExport,
+  // V18 — location-aware food database (restaurants & menus)
+  Restaurant,
+  RestaurantMenuItem,
+  MenuCorrection,
 } from '@prisma/client';

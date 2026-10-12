@@ -1,9 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { ChevronLeft, ChevronRight, Copy, Info, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Input, Modal, Select, Skeleton } from '@/components/ui';
+import { SwapsSection } from '@/components/SwapsSection';
 import {
   EmptyStateLux,
   GlassPanel,
@@ -50,6 +52,47 @@ interface FoodResult {
   fatG: number;
   fiberG: number;
   verified?: boolean;
+  /** V18: present when /api/foods (Phase A) returns category data. */
+  categoryId?: string | null;
+  categoryName?: string | null;
+}
+
+/**
+ * Normalize a /api/foods record to FoodResult. Accepts both the legacy
+ * flat shape (top-level kcal/proteinG/...) and the Phase A shape
+ * (perServing.{kcal,...}, category.{id,name}). Missing numbers become 0 —
+ * the row shows "0 kcal" rather than crashing; VerificationBadge (via the
+ * swaps section) still labels the data source honestly.
+ */
+function normalizeFoodResult(raw: Record<string, unknown>): FoodResult {
+  const ps = (raw.perServing ?? {}) as Record<string, unknown>;
+  const cat = (raw.category ?? {}) as Record<string, unknown>;
+  return {
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? 'Food'),
+    brand: typeof raw.brand === 'string' ? raw.brand : null,
+    servingSize: num(raw.servingSize) > 0 ? num(raw.servingSize) : null,
+    servingUnit: typeof raw.servingUnit === 'string' ? raw.servingUnit : null,
+    kcal: num(ps.kcal ?? raw.kcal),
+    proteinG: num(ps.proteinG ?? raw.proteinG),
+    carbsG: num(ps.carbsG ?? raw.carbsG),
+    fatG: num(ps.fatG ?? raw.fatG),
+    fiberG: num(ps.fiberG ?? raw.fiberG),
+    verified:
+      typeof raw.verified === 'boolean' ? raw.verified : raw.verification === 'verified',
+    categoryId:
+      typeof raw.categoryId === 'string'
+        ? raw.categoryId
+        : typeof cat.id === 'string'
+          ? cat.id
+          : null,
+    categoryName:
+      typeof raw.categoryName === 'string'
+        ? raw.categoryName
+        : typeof cat.name === 'string'
+          ? cat.name
+          : null,
+  };
 }
 
 interface RecipeResult {
@@ -125,6 +168,8 @@ export default function NutritionDiaryPage() {
   const [waterSaving, setWaterSaving] = useState(false);
   const [customWater, setCustomWater] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /** V18: Ramadan mode from profile — adds Sehri/Iftar meal sections. */
+  const [ramadanMode, setRamadanMode] = useState(false);
 
   const [modal, setModal] = useState<null | { kind: 'add'; mealType: MealType } | { kind: 'copy' }>(null);
   const [tab, setTab] = useState<'search' | 'manual' | 'recipe' | 'favorites'>('search');
@@ -133,6 +178,8 @@ export default function NutritionDiaryPage() {
   const [foodResults, setFoodResults] = useState<FoodResult[] | null>(null);
   const [foodSearching, setFoodSearching] = useState(false);
   const [foodServings, setFoodServings] = useState<Record<string, number>>({});
+  /** V18: which search-row food has its "Lighter alternatives" expanded. */
+  const [swapsFor, setSwapsFor] = useState<string | null>(null);
 
   const [manual, setManual] = useState({
     name: '',
@@ -188,6 +235,7 @@ export default function NutritionDiaryPage() {
         weightKg = null;
       }
       setTargets(computeTargets(prof, weightKg));
+      setRamadanMode(Boolean((prof as Record<string, unknown> | null)?.ramadanMode));
       const alg = Array.isArray(prof?.allergies) ? prof.allergies.filter((a): a is string => typeof a === 'string') : [];
       const intol = Array.isArray(prof?.intolerances)
         ? prof.intolerances.filter((a): a is string => typeof a === 'string')
@@ -258,8 +306,8 @@ export default function NutritionDiaryPage() {
     await refreshDiary();
   }
 
-  async function handleAddFood(food: FoodResult, mealType: MealType) {
-    const servings = Math.max(0.25, num(foodServings[food.id], 1));
+  async function handleAddFood(food: FoodResult, mealType: MealType, servingsOverride?: number) {
+    const servings = Math.max(0.25, servingsOverride ?? num(foodServings[food.id], 1));
     setBusyId(`food-${food.id}`);
     setError(null);
     try {
@@ -284,6 +332,11 @@ export default function NutritionDiaryPage() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  /** V18: log a "Use instead" swap pick as the same meal (servings preserved). */
+  async function handleUseInstead(raw: Record<string, unknown>, servings: number, mealType: MealType) {
+    await handleAddFood(normalizeFoodResult(raw), mealType, servings);
   }
 
   async function handleManualAdd(mealType: MealType) {
@@ -543,7 +596,7 @@ export default function NutritionDiaryPage() {
     searchTimer.current = setTimeout(async () => {
       try {
         const data = await api<unknown>(`/api/foods?q=${encodeURIComponent(q)}`);
-        setFoodResults(unwrapList<FoodResult>(data, 'foods'));
+        setFoodResults(unwrapList<Record<string, unknown>>(data, 'foods').map(normalizeFoodResult));
       } catch {
         setFoodResults([]);
       } finally {
@@ -630,6 +683,7 @@ export default function NutritionDiaryPage() {
     setRecipeServings(1);
     setFavorites(null);
     setError(null);
+    setSwapsFor(null);
     setModal({ kind: 'add', mealType });
   };
 
@@ -638,6 +692,8 @@ export default function NutritionDiaryPage() {
   const remaining = kcalTarget - consumed;
   const waterGoal = targets?.waterMl ?? 2000;
   const caloriePct = kcalTarget > 0 ? Math.min((consumed / kcalTarget) * 100, 100) : 0;
+  /** V18: Ramadan mode adds Sehri/Iftar meal sections (accepted by the API, no migration). */
+  const mealOrder: MealType[] = ramadanMode ? [...MEAL_ORDER, 'sehri', 'iftar'] : MEAL_ORDER;
   const waterPct = waterGoal > 0 && waterMl != null ? Math.min((waterMl / waterGoal) * 100, 100) : 0;
 
   return (
@@ -678,6 +734,16 @@ export default function NutritionDiaryPage() {
           </LuxButton>
         </div>
       </div>
+
+      {/* V18: entry point to the Log-a-Meal hub. */}
+      <Link
+        href="/log"
+        className="anim-press flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-colors"
+        style={{ backgroundColor: 'var(--accent)', color: 'var(--on-accent)' }}
+      >
+        <Plus size={18} aria-hidden="true" />
+        Log a meal
+      </Link>
 
       {error && (
         <div
@@ -753,7 +819,7 @@ export default function NutritionDiaryPage() {
                 <MetricCard
                   label="Logged"
                   value={<span className="t-numeral">{Math.round(consumed)} kcal</span>}
-                  subtext={`${MEAL_ORDER.reduce((n, m) => n + (entriesByMeal.get(m)?.length ?? 0), 0)} items`}
+                  subtext={`${mealOrder.reduce((n, m) => n + (entriesByMeal.get(m)?.length ?? 0), 0)} items`}
                 />
               </div>
               <MacroBar label="Protein" value={totals.proteinG} target={targets.proteinG} unit="g" />
@@ -855,7 +921,7 @@ export default function NutritionDiaryPage() {
               Nothing logged yet — tap <strong>Add food</strong> under any meal to start.
             </p>
           )}
-          {MEAL_ORDER.map((mt) => {
+          {mealOrder.map((mt) => {
             const list = entriesByMeal.get(mt) ?? [];
             const mealKcal = Math.round(list.reduce((n, e) => n + num(e.kcal), 0));
             return (
@@ -1053,6 +1119,33 @@ export default function NutritionDiaryPage() {
                       >
                         {busyId === `food-${f.id}` ? 'Adding…' : 'Add'}
                       </LuxButton>
+                    </div>
+                    {/* V18: lighter alternatives (lazy — fetches only when expanded) */}
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setSwapsFor((cur) => (cur === f.id ? null : f.id))}
+                        className="t-meta underline underline-offset-2"
+                        aria-expanded={swapsFor === f.id}
+                      >
+                        {swapsFor === f.id ? 'Hide lighter options' : 'Lighter options'}
+                      </button>
+                      {swapsFor === f.id && (
+                        <SwapsSection
+                          food={{
+                            id: f.id,
+                            name: f.name,
+                            perServingKcal: f.kcal,
+                            servingSize: f.servingSize ?? null,
+                            servingUnit: f.servingUnit ?? null,
+                            categoryId: f.categoryId ?? null,
+                            categoryName: f.categoryName ?? null,
+                          }}
+                          onUseInstead={(raw) =>
+                            void handleUseInstead(raw, servings, (modal as { mealType: MealType }).mealType)
+                          }
+                        />
+                      )}
                     </div>
                   </li>
                 );

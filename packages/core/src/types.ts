@@ -25,7 +25,11 @@ export type MealType =
   | 'lunch'
   | 'afternoon_snack'
   | 'dinner'
-  | 'extra';
+  | 'extra'
+  // V18: Ramadan meal types. DiaryEntry.mealType is a free String in the DB,
+  // so these need no migration — only this union + the zod enum below.
+  | 'sehri'
+  | 'iftar';
 
 export interface Nutrients {
   kcal: number;

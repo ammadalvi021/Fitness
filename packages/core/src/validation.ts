@@ -27,6 +27,9 @@ const MealTypeEnum = z.enum([
   'afternoon_snack',
   'dinner',
   'extra',
+  // V18 Ramadan: accepted by POST /api/diary with no DB migration.
+  'sehri',
+  'iftar',
 ]);
 const DateString = z
   .string()
@@ -78,6 +81,18 @@ export const ProfileUpdateSchema = z.object({
   eatingDisorderRisk: z.boolean().optional(),
   isPregnant: z.boolean().optional(),
   isBreastfeeding: z.boolean().optional(),
+  // V18 — location / locale preferences (DB columns already exist; Phase A wires UI).
+  /** ISO-3166 alpha-2 country code, e.g. "PK". */
+  country: z
+    .string()
+    .length(2, 'country must be a 2-letter ISO code')
+    .transform((s) => s.toUpperCase())
+    .optional(),
+  cityRegion: z.string().min(1).max(100).optional(),
+  language: z.enum(['en', 'ur', 'roman-ur']).optional(),
+  unitSystem: z.enum(['metric', 'imperial']).optional(),
+  // V18: Ramadan mode toggle (DB column already exists; Phase A wires UI).
+  ramadanMode: z.boolean().optional(),
 });
 export type ProfileUpdateInput = z.infer<typeof ProfileUpdateSchema>;
 
@@ -138,3 +153,48 @@ export const CoachMessageSchema = z.object({
   content: z.string().min(1, 'Message is required').max(10000),
 });
 export type CoachMessageInput = z.infer<typeof CoachMessageSchema>;
+
+// ---------------------------------------------------------------------------
+// V18 — custom (user-created) recipes
+// ---------------------------------------------------------------------------
+
+/**
+ * One ingredient row. Explicit nutrient values are PER 100 g of the
+ * ingredient; when `foodId` points at a catalogue food the server derives
+ * per-100-g values from that food's serving. Rows with only a name (e.g.
+ * "salt", "water") contribute 0 — the server never invents nutrition.
+ */
+export const CustomRecipeIngredientSchema = z.object({
+  foodId: z.string().min(1).optional(),
+  name: z.string().min(1).max(200),
+  grams: z.number().positive('grams must be positive').max(10000),
+  kcal: z.number().min(0).max(9000).optional(),
+  proteinG: z.number().min(0).max(100).optional(),
+  carbsG: z.number().min(0).max(100).optional(),
+  fatG: z.number().min(0).max(100).optional(),
+  fiberG: z.number().min(0).max(100).optional(),
+});
+export type CustomRecipeIngredientInput = z.infer<
+  typeof CustomRecipeIngredientSchema
+>;
+
+export const CustomRecipeSchema = z.object({
+  name: z.string().min(1).max(200),
+  ingredients: z
+    .array(CustomRecipeIngredientSchema)
+    .min(1, 'Add at least one ingredient')
+    .max(100),
+  yieldGrams: z.number().positive().max(50000).optional(),
+  portions: z.number().int().min(1).max(100),
+  instructions: z.array(z.string().min(1).max(2000)).max(50).optional(),
+  dietCategory: z.enum(['vegetarian', 'non_vegetarian']).optional(),
+  prepMin: z.number().int().min(0).max(1440).optional(),
+  cookMin: z.number().int().min(0).max(1440).optional(),
+  difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
+});
+export type CustomRecipeInput = z.infer<typeof CustomRecipeSchema>;
+
+/** PATCH body: any subset of the create fields; changing ingredients or
+ * portions triggers a nutrition recalculation on the server. */
+export const CustomRecipePatchSchema = CustomRecipeSchema.partial();
+export type CustomRecipePatchInput = z.infer<typeof CustomRecipePatchSchema>;

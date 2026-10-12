@@ -15,16 +15,18 @@ import { GlassPanel, LuxButton } from "@/components/luxury";
 import {
   ACTIVITY_OPTIONS,
   BUDGET_OPTIONS,
+  COUNTRY_OPTIONS,
   DAY_OPTIONS,
   DIET_OPTIONS,
   EQUIPMENT_OPTIONS,
   FITNESS_EXPERIENCE_OPTIONS,
   GOAL_OPTIONS,
+  LANGUAGE_OPTIONS,
   SEX_OPTIONS,
   WORKOUT_LOCATION_OPTIONS,
 } from "@/lib/onboarding-options";
 
-const STEPS = ["Basics", "Goals", "Nutrition", "Workouts", "Review"] as const;
+const STEPS = ["Basics", "Goals", "Nutrition", "Location", "Workouts", "Review"] as const;
 
 function splitList(s: string): string[] {
   return s
@@ -139,7 +141,14 @@ export default function OnboardingPage() {
   const [budgetTier, setBudgetTier] = useState("");
   const [mealsPerDay, setMealsPerDay] = useState("");
 
-  // Step 4: workouts
+  // Step 4 (V18): location & language
+  const [country, setCountry] = useState("PK");
+  const [cityRegion, setCityRegion] = useState("");
+  const [language, setLanguage] = useState("");
+  const [unitSystem, setUnitSystem] = useState<"metric" | "imperial">("metric");
+  const [halalOnly, setHalalOnly] = useState(false);
+
+  // Step 5: workouts
   const [fitnessExperience, setFitnessExperience] = useState("");
   const [workoutLocation, setWorkoutLocation] = useState("");
   const [equipment, setEquipment] = useState<string[]>([]);
@@ -147,7 +156,7 @@ export default function OnboardingPage() {
   const [workoutMinutes, setWorkoutMinutes] = useState("");
   const [exerciseRestrictions, setExerciseRestrictions] = useState("");
 
-  // Step 5: safety (all optional, asked gently)
+  // Step 6: safety (all optional, asked gently)
   const [isPregnant, setIsPregnant] = useState(false);
   const [isBreastfeeding, setIsBreastfeeding] = useState(false);
   const [eatingDisorderRisk, setEatingDisorderRisk] = useState(false);
@@ -242,6 +251,12 @@ export default function OnboardingPage() {
     if (Number.isFinite(mpd) && mpd > 0) p.mealsPerDay = mpd;
     if (fitnessExperience) p.fitnessExperience = fitnessExperience;
     if (workoutLocation) p.workoutLocation = workoutLocation;
+    // Step 4 (V18): location & language — country defaults to Pakistan.
+    if (country) p.country = country;
+    if (cityRegion.trim()) p.cityRegion = cityRegion.trim();
+    if (language) p.language = language;
+    p.unitSystem = unitSystem;
+    p.halalOnly = halalOnly;
     if (equipment.length) p.equipment = equipment;
     if (workoutDays.length) p.workoutDays = workoutDays;
     const wm = parseInt(workoutMinutes, 10);
@@ -482,8 +497,49 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* ---------------- Step 4: workouts ---------------- */}
+        {/* ---------------- Step 4 (V18): location & language ---------------- */}
         {step === 3 && (
+          <div className="space-y-5">
+            <h2 className="t-card-heading">Where are you?</h2>
+            <p className="text-sm text-[var(--text-secondary)]">
+              This picks the right food catalogue for you (Pakistani home foods,
+              local portions) and the language for food names.
+            </p>
+            <Field label="Country" htmlFor="ob-country">
+              <Select id="ob-country" value={country} onChange={(e) => setCountry(e.target.value)}>
+                {COUNTRY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="City / region" htmlFor="ob-city" hint="Optional — used for nearby restaurants and local foods.">
+              <Input id="ob-city" value={cityRegion} onChange={(e) => setCityRegion(e.target.value)} placeholder="e.g. Lahore" autoComplete="address-level2" />
+            </Field>
+            <Field label="Language" htmlFor="ob-language" hint="Food names appear in this language where available.">
+              <Select id="ob-language" value={language} onChange={(e) => setLanguage(e.target.value)}>
+                {LANGUAGE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+            <div>
+              <span className="mb-2 block text-sm font-medium text-[var(--text)]">Units</span>
+              <UnitToggle
+                label="Unit system"
+                value={unitSystem}
+                onChange={setUnitSystem}
+                options={[
+                  { value: "metric", label: "Metric (kg, cm)" },
+                  { value: "imperial", label: "Imperial (lb, in)" },
+                ]}
+              />
+            </div>
+            <CheckRow label="Halal only — keep non-halal foods out of my plans" checked={halalOnly} onChange={setHalalOnly} />
+          </div>
+        )}
+
+        {/* ---------------- Step 5: workouts ---------------- */}
+        {step === 4 && (
           <div className="space-y-5">
             <h2 className="t-card-heading">Workouts</h2>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -527,8 +583,8 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* ---------------- Step 5: review + safety ---------------- */}
-        {step === 4 && (
+        {/* ---------------- Step 6: review + safety ---------------- */}
+        {step === 5 && (
           <div className="space-y-5">
             <h2 className="t-card-heading">Almost done — a quick health check</h2>
             <p className="text-sm text-[var(--text-secondary)]">
@@ -573,6 +629,8 @@ export default function OnboardingPage() {
                 <li>Height: {resolvedHeightCm() ? `${resolvedHeightCm()} cm` : "—"}{weightUnit === "imperial" && heightUnit === "imperial" && resolvedHeightCm() ? ` (${Math.round(inFromCm(resolvedHeightCm()!))} in)` : ""}</li>
                 <li>Weight: {resolvedWeightKg() ? `${resolvedWeightKg()} kg` : "—"}{weightUnit === "imperial" && resolvedWeightKg() ? ` (${Math.round(lbFromKg(resolvedWeightKg()!))} lb)` : ""}</li>
                 <li>Diet: {DIET_OPTIONS.find((o) => o.value === dietPreference)?.label}</li>
+                <li>Country: {country ? COUNTRY_OPTIONS.find((o) => o.value === country)?.label : "—"}{cityRegion.trim() ? ` · ${cityRegion.trim()}` : ""}</li>
+                <li>Language: {language ? LANGUAGE_OPTIONS.find((o) => o.value === language)?.label : "—"} · Units: {unitSystem === "metric" ? "Metric" : "Imperial"}{halalOnly ? " · Halal only" : ""}</li>
               </ul>
             </div>
           </div>

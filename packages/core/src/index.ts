@@ -15,3 +15,4 @@ export * from './plans.js';
 export * from './shopping.js';
 export * from './idempotency.js';
 export * from './validation.js';
+export * from './food-catalog.js';

@@ -21,7 +21,7 @@ import {
   Tooltip as LuxTooltip,
 } from "@/components/luxury";
 import { profileTargets, num, ageFromDob } from "@/lib/targets";
-import { useSession } from "../layout";
+import { useSession } from "@/components/session";
 
 interface BmiResult {
   bmi: number;

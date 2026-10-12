@@ -22,8 +22,20 @@ describe('seed data (read-only counts)', () => {
     expect(await prisma.exercise.count()).toBe(50);
   });
 
-  it('has 40 starter foods', async () => {
-    expect(await prisma.food.count()).toBe(40);
+  it('has 149 foods (40 starter + 109 V18 Pakistani home foods)', async () => {
+    expect(await prisma.food.count()).toBe(149);
+  });
+
+  it('has 16 V18 food categories', async () => {
+    expect(await prisma.foodCategory.count()).toBe(16);
+  });
+
+  it('has 544 food aliases (430 V18 + 114 starter-food extensions)', async () => {
+    expect(await prisma.foodAlias.count()).toBe(544);
+  });
+
+  it('has 230 household portions (183 V18 + 47 starter-food extensions)', async () => {
+    expect(await prisma.householdPortion.count()).toBe(230);
   });
 });
 

@@ -32,8 +32,23 @@ export const MEAL_TYPES: { value: MealType; label: string }[] = [
   { value: 'extra', label: 'Extra' },
 ];
 
+/** V18 Ramadan meal types (profile.ramadanMode on). Accepted by POST /api/diary. */
+export const RAMADAN_MEAL_TYPES: { value: MealType; label: string }[] = [
+  { value: 'sehri', label: 'Sehri' },
+  { value: 'iftar', label: 'Iftar' },
+];
+
+/** Meal-type options for logging UI: includes Sehri/Iftar when Ramadan mode is on. */
+export function mealTypeOptions(ramadanMode: boolean): { value: MealType; label: string }[] {
+  return ramadanMode ? [...MEAL_TYPES, ...RAMADAN_MEAL_TYPES] : MEAL_TYPES;
+}
+
 export function mealLabel(mealType: string): string {
-  return MEAL_TYPES.find((m) => m.value === mealType)?.label ?? mealType;
+  return (
+    MEAL_TYPES.find((m) => m.value === mealType)?.label ??
+    RAMADAN_MEAL_TYPES.find((m) => m.value === mealType)?.label ??
+    mealType
+  );
 }
 
 /** Local-date YYYY-MM-DD (no UTC shift). */

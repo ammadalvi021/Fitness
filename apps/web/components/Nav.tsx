@@ -17,10 +17,13 @@ import {
   Home,
   LayoutDashboard,
   LogOut,
+  Mic,
+  MoonStar,
   Settings,
   Target,
   TrendingUp,
   User,
+  UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 import { branding } from "@/lib/site";
@@ -50,6 +53,8 @@ const MOBILE_ITEMS: NavItem[] = [
 const DESKTOP_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/nutrition", label: "Nutrition", icon: Apple },
+  { href: "/log", label: "Log Meal", icon: UtensilsCrossed },
+  { href: "/ramadan", label: "Ramadan", icon: MoonStar },
   { href: "/nutrition/plans", label: "Meal Plans", icon: CalendarDays },
   { href: "/recipes", label: "Recipes", icon: BookOpen },
   { href: "/scanner", label: "Food Scanner", icon: Camera },

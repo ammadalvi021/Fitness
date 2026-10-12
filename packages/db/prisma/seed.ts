@@ -32,8 +32,19 @@ import { fileURLToPath } from 'node:url';
 }
 
 import { PrismaClient } from '@prisma/client';
+import {
+  V18_CATEGORIES,
+  V18_EXISTING_FOOD_EXTENSIONS,
+  V18_FOODS,
+  type V18FoodSeed,
+} from './seed-v18-data.js';
 
 const prisma = new PrismaClient();
+
+/** Round to 1 decimal — same convention as @fitfusion/core roundNutrients. */
+function r1(x: number): number {
+  return Math.round(x * 10) / 10;
+}
 
 // ---------------------------------------------------------------------------
 // Cuisines
@@ -2075,13 +2086,148 @@ async function main() {
     });
   }
 
-  const [cuisines, recipes, exercises, foods] = await Promise.all([
+  // -----------------------------------------------------------------------
+  // V18 — Pakistani home-food catalogue (categories, foods, aliases, portions)
+  // -----------------------------------------------------------------------
+  const existingFoodNames = new Set(FOODS.map((f) => f.name));
+  const categoryIds = new Map<string, string>();
+  for (const c of V18_CATEGORIES) {
+    const row = await prisma.foodCategory.upsert({
+      where: { name: c.name },
+      update: { nameUrdu: c.nameUrdu, sortOrder: c.sortOrder },
+      create: { name: c.name, nameUrdu: c.nameUrdu, sortOrder: c.sortOrder },
+    });
+    categoryIds.set(c.name, row.id);
+  }
+
+  // Sanity: every V18 food must reference a known category.
+  const unknownCats = V18_FOODS.filter((f) => !categoryIds.has(f.category)).map((f) => f.name);
+  if (unknownCats.length) {
+    throw new Error(`V18 foods with unknown category: ${unknownCats.join(', ')}`);
+  }
+  // Sanity: no V18 food may duplicate an existing starter-food name.
+  const dupes = V18_FOODS.filter((f) => existingFoodNames.has(f.name)).map((f) => f.name);
+  if (dupes.length) {
+    throw new Error(`V18 foods duplicating existing names: ${dupes.join(', ')}`);
+  }
+  // Sanity: V18 food names must be unique within the batch.
+  const seenNames = new Set<string>();
+  for (const f of V18_FOODS) {
+    if (seenNames.has(f.name)) throw new Error(`Duplicate V18 food name: ${f.name}`);
+    seenNames.add(f.name);
+  }
+
+  let v18Foods = 0;
+  let v18Aliases = 0;
+  let v18Portions = 0;
+
+  async function seedV18Food(f: V18FoodSeed) {
+    const factor = f.servingSize / 100;
+    const data = {
+      brand: null,
+      servingSize: f.servingSize,
+      servingUnit: f.servingUnit,
+      kcal: r1(f.per100[0] * factor),
+      proteinG: r1(f.per100[1] * factor),
+      carbsG: r1(f.per100[2] * factor),
+      fatG: r1(f.per100[3] * factor),
+      fiberG: r1(f.per100[4] * factor),
+      source: 'seeded',
+      verified: false,
+      verification: 'estimate',
+      basis: f.basis,
+      categoryId: categoryIds.get(f.category) ?? null,
+      countryCodes: ['PK'],
+    };
+    const food = await prisma.food.upsert({
+      where: { name: f.name },
+      update: data,
+      create: { name: f.name, ...data },
+    });
+    // Replace aliases + portions wholesale so re-runs stay idempotent.
+    await prisma.foodAlias.deleteMany({ where: { foodId: food.id } });
+    await prisma.householdPortion.deleteMany({ where: { foodId: food.id } });
+    if (f.aliases.length) {
+      await prisma.foodAlias.createMany({
+        data: f.aliases.map(([alias, language], i) => ({ foodId: food.id, alias, language })),
+      });
+      v18Aliases += f.aliases.length;
+    }
+    if (f.portions.length) {
+      await prisma.householdPortion.createMany({
+        data: f.portions.map((p, i) => ({
+          foodId: food.id,
+          label: p.label,
+          labelUrdu: p.labelUrdu ?? null,
+          grams: p.grams ?? null,
+          ml: p.ml ?? null,
+          sortOrder: i,
+        })),
+      });
+      v18Portions += f.portions.length;
+    }
+    v18Foods++;
+  }
+
+  for (const f of V18_FOODS) {
+    await seedV18Food(f);
+  }
+
+  // Extend the 43 pre-existing starter foods (aliases + portions + category),
+  // never touching their nutrition values.
+  let extendedFoods = 0;
+  for (const ext of V18_EXISTING_FOOD_EXTENSIONS) {
+    const food = await prisma.food.findUnique({ where: { name: ext.name } });
+    if (!food) {
+      console.warn(`V18 extension skipped — food not found: ${ext.name}`);
+      continue;
+    }
+    await prisma.food.update({
+      where: { id: food.id },
+      data: {
+        categoryId: ext.category ? (categoryIds.get(ext.category) ?? null) : food.categoryId,
+        countryCodes: ext.countryCodes,
+        basis: food.basis ?? 'Previously seeded starter food — values retained from original seed',
+      },
+    });
+    await prisma.foodAlias.deleteMany({ where: { foodId: food.id } });
+    await prisma.householdPortion.deleteMany({ where: { foodId: food.id } });
+    if (ext.aliases.length) {
+      await prisma.foodAlias.createMany({
+        data: ext.aliases.map(([alias, language]) => ({ foodId: food.id, alias, language })),
+      });
+      v18Aliases += ext.aliases.length;
+    }
+    if (ext.portions.length) {
+      await prisma.householdPortion.createMany({
+        data: ext.portions.map((p, i) => ({
+          foodId: food.id,
+          label: p.label,
+          labelUrdu: p.labelUrdu ?? null,
+          grams: p.grams ?? null,
+          ml: p.ml ?? null,
+          sortOrder: i,
+        })),
+      });
+      v18Portions += ext.portions.length;
+    }
+    extendedFoods++;
+  }
+
+  const [cuisines, recipes, exercises, foods, categories, aliases, portions] = await Promise.all([
     prisma.cuisine.count(),
     prisma.recipe.count(),
     prisma.exercise.count(),
     prisma.food.count(),
+    prisma.foodCategory.count(),
+    prisma.foodAlias.count(),
+    prisma.householdPortion.count(),
   ]);
-  console.log(`Seed complete: cuisines=${cuisines} recipes=${recipes} exercises=${exercises} foods=${foods}`);
+  console.log(
+    `Seed complete: cuisines=${cuisines} recipes=${recipes} exercises=${exercises} foods=${foods} ` +
+      `categories=${categories} aliases=${aliases} portions=${portions} ` +
+      `(v18 new foods=${v18Foods}, extended existing=${extendedFoods}, v18 aliases=${v18Aliases}, v18 portions=${v18Portions})`,
+  );
 }
 
 main()

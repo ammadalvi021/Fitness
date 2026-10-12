@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Field, Input, Select, Skeleton } from "@/components/ui";
 import { GlassPanel, LuxButton } from "@/components/luxury";
-import { useSession } from "../layout";
+import { useSession } from "@/components/session";
 
 interface ProfileForm {
   displayName: string;

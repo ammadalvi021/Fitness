@@ -1,32 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Sidebar, BottomNav } from "@/components/Nav";
 import { Skeleton } from "@/components/ui";
 import { ThemeToggle } from "@/components/ThemeToggle";
-
-/** Shape of GET /api/auth/me (user, profile, subscription). */
-export interface SessionData {
-  user: {
-    id: string;
-    email: string;
-    name?: string | null;
-    emailVerifiedAt?: string | null;
-  };
-  profile: Record<string, unknown> | null;
-  subscription: { planId: string; status: string } | null;
-}
-
-const SessionContext = createContext<SessionData | null>(null);
-
-/** Access the current session (user/profile/subscription) in app pages. */
-export function useSession(): SessionData {
-  const ctx = useContext(SessionContext);
-  if (!ctx) throw new Error("useSession must be used inside the app shell");
-  return ctx;
-}
+import { SessionContext, type SessionData } from "@/components/session";
 
 /**
  * Authenticated shell: verifies the session, then renders the sidebar

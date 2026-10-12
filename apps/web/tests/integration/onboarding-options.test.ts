@@ -17,11 +17,13 @@ import { POST as onboardingPOST } from '@/app/api/onboarding/route';
 import {
   ACTIVITY_OPTIONS,
   BUDGET_OPTIONS,
+  COUNTRY_OPTIONS,
   DAY_OPTIONS,
   DIET_OPTIONS,
   EQUIPMENT_OPTIONS,
   FITNESS_EXPERIENCE_OPTIONS,
   GOAL_OPTIONS,
+  LANGUAGE_OPTIONS,
   SEX_OPTIONS,
   WORKOUT_LOCATION_OPTIONS,
 } from '@/lib/onboarding-options';
@@ -76,6 +78,24 @@ describe('onboarding UI option values match OnboardingSchema', () => {
         OnboardingSchema.pick({ budgetTier: true }).safeParse({ budgetTier: v })
           .success,
         `budget option "${v}" rejected by schema`,
+      ).toBe(true);
+    }
+  });
+
+  it('country options validate (V18)', () => {
+    for (const v of nonEmpty(COUNTRY_OPTIONS)) {
+      expect(
+        OnboardingSchema.pick({ country: true }).safeParse({ country: v }).success,
+        `country option "${v}" rejected by schema`,
+      ).toBe(true);
+    }
+  });
+
+  it('language options validate (V18)', () => {
+    for (const v of nonEmpty(LANGUAGE_OPTIONS)) {
+      expect(
+        OnboardingSchema.pick({ language: true }).safeParse({ language: v }).success,
+        `language option "${v}" rejected by schema`,
       ).toBe(true);
     }
   });

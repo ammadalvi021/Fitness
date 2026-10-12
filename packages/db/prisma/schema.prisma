@@ -43,6 +43,8 @@ model User {
   foodScans          FoodScan[]
   coachConversations CoachConversation[]
   dataExports        DataExport[]
+  recipes            Recipe[]
+  menuCorrections    MenuCorrection[]
 }
 
 model VerificationToken {
@@ -61,11 +63,11 @@ model VerificationToken {
 }
 
 model Session {
-  id         String    @id @default(cuid())
+  id         String   @id @default(cuid())
   userId     String
-  tokenHash  String    @unique
+  tokenHash  String   @unique
   expiresAt  DateTime
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime @default(now())
   lastSeenAt DateTime
   userAgent  String?
   ip         String?
@@ -94,56 +96,64 @@ model Consent {
 // ---------------------------------------------------------------------------
 
 model Profile {
-  id                   String    @id @default(cuid())
-  userId               String    @unique
-  displayName          String?
-  dateOfBirth          DateTime?
-  sex                  String?
-  heightCm             Float?
-  activityLevel        String?
-  goal                 String?
-  targetWeightKg       Float?
-  fitnessExperience    String?
-  workoutLocation      String?
-  equipment            String[]  @default([])
-  workoutDays          String[]  @default([])
-  workoutMinutesPerDay Int?
-  dietPreference       String?   @default("flexible")
-  allergies            String[]  @default([])
-  intolerances         String[]  @default([])
-  halalOnly            Boolean   @default(false)
-  preferredCuisines    String[]  @default([])
-  dislikedIngredients  String[]  @default([])
-  mealsPerDay          Int?      @default(3)
-  budgetTier           String?
-  maxCookMinutes       Int?
-  healthLimitations    String?
-  exerciseRestrictions String?
-  eatingDisorderRisk   Boolean   @default(false)
-  isPregnant           Boolean   @default(false)
-  isBreastfeeding      Boolean   @default(false)
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  displayName           String?
+  dateOfBirth           DateTime?
+  sex                   String?
+  heightCm              Float?
+  activityLevel         String?
+  goal                  String?
+  targetWeightKg        Float?
+  fitnessExperience     String?
+  workoutLocation       String?
+  equipment             String[]  @default([])
+  workoutDays           String[]  @default([])
+  workoutMinutesPerDay  Int?
+  dietPreference        String?   @default("flexible")
+  allergies             String[]  @default([])
+  intolerances          String[]  @default([])
+  halalOnly             Boolean   @default(false)
+  preferredCuisines     String[]  @default([])
+  dislikedIngredients   String[]  @default([])
+  mealsPerDay           Int?      @default(3)
+  budgetTier            String?
+  maxCookMinutes        Int?
+  healthLimitations     String?
+  exerciseRestrictions  String?
+  eatingDisorderRisk    Boolean   @default(false)
+  isPregnant            Boolean   @default(false)
+  isBreastfeeding       Boolean   @default(false)
   onboardingCompletedAt DateTime?
-  updatedAt            DateTime  @updatedAt
+  // V18 location & localization
+  country               String    @default("PK")
+  cityRegion            String?
+  // 'en' | 'ur' | 'roman-ur'
+  language              String    @default("en")
+  // 'metric' | 'imperial'
+  unitSystem            String    @default("metric")
+  ramadanMode           Boolean   @default(false)
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Subscription {
-  id               String    @id @default(cuid())
-  userId           String    @unique
-  planId           String    @default("free")
-  status           String    @default("active")
-  billingPeriod    String?
-  provider         String?
-  providerRef      String?
-  currentPeriodEnd DateTime?
+  id                       String    @id @default(cuid())
+  userId                   String    @unique
+  planId                   String    @default("free")
+  status                   String    @default("active")
+  billingPeriod            String?
+  provider                 String?
+  providerRef              String?
+  currentPeriodEnd         DateTime?
   // Stripe test-mode/live identifiers. Paid access is granted ONLY by the
   // signature-verified Stripe webhook — never by a frontend claim.
-  stripeCustomerId     String?
-  stripeSubscriptionId String? @unique
+  stripeCustomerId         String?
+  stripeSubscriptionId     String?   @unique
   // When the subscription first entered past_due (arrears clock start for the
   // finite grace window PAST_DUE_GRACE_DAYS). NULL = not in arrears.
-  pastDueSince     DateTime?
+  pastDueSince             DateTime?
   // The most recent Stripe Checkout Session started by POST
   // /api/billing/checkout for this user (test mode ids are synthetic).
   // Used to resolve retried / double-POST checkout requests to the SAME
@@ -152,8 +162,8 @@ model Subscription {
   // (or the session expires / completes).
   stripeCheckoutSessionId  String?
   stripeCheckoutSessionUrl String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -190,22 +200,35 @@ model Measurement {
 }
 
 model Food {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  brand       String?
-  servingSize Float
-  servingUnit String
-  kcal        Float
-  proteinG    Float
-  carbsG      Float
-  fatG        Float
-  fiberG      Float
-  // "seeded" | "user" | "ai_estimate"
-  source      String
-  verified    Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id            String    @id @default(cuid())
+  name          String    @unique
+  brand         String?
+  servingSize   Float
+  servingUnit   String
+  kcal          Float
+  proteinG      Float
+  carbsG        Float
+  fatG          Float
+  fiberG        Float
+  // "seeded" | "user" | "ai_estimate" | "openfoodfacts" | "restaurant"
+  source        String
+  verified      Boolean   @default(false)
+  // V18: richer verification — "estimate" (default) | "verified"
+  verification  String    @default("estimate")
+  // Basis of an estimate, e.g. "USDA FoodData Central generic equivalent"
+  basis         String?
+  categoryId    String?
+  // ISO country codes where this food is available
+  countryCodes  String[]  @default([])
+  barcode       String?   @unique
+  sourceRef     String?
+  lastCheckedAt DateTime?
+  createdAt     DateTime  @default(now())
 
   diaryEntries DiaryEntry[]
+  category     FoodCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  aliases      FoodAlias[]
+  portions     HouseholdPortion[]
 }
 
 model DiaryEntry {
@@ -229,10 +252,10 @@ model DiaryEntry {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  food   Food?   @relation(fields: [foodId], references: [id], onDelete: SetNull)
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food   Food?     @relation(fields: [foodId], references: [id], onDelete: SetNull)
   scan   FoodScan? @relation(fields: [scanId], references: [id], onDelete: SetNull)
-  recipe Recipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  recipe Recipe?   @relation(fields: [recipeId], references: [id], onDelete: SetNull)
 
   @@unique([userId, idempotencyKey])
   @@index([userId, date])
@@ -297,38 +320,44 @@ model Cuisine {
 }
 
 model Recipe {
-  id               String   @id @default(cuid())
-  slug             String   @unique
-  title            String
-  cuisineId        String?
+  id                String   @id @default(cuid())
+  slug              String   @unique
+  title             String
+  cuisineId         String?
   // "vegetarian" | "non_vegetarian"
-  dietCategory     String
-  tags             String[] @default([])
-  servings         Int
-  prepMin          Int
-  cookMin          Int
-  difficulty       String
-  ingredients      Json
-  instructions     Json
-  kcalPerServing   Float
+  dietCategory      String
+  tags              String[] @default([])
+  servings          Int
+  prepMin           Int
+  cookMin           Int
+  difficulty        String
+  ingredients       Json
+  instructions      Json
+  kcalPerServing    Float
   proteinPerServing Float
-  carbsPerServing  Float
-  fatPerServing    Float
-  fiberPerServing  Float
-  imageUrl         String?
-  videoUrl         String?
-  // "curated" | "ai"
-  source           String
-  verified         Boolean  @default(false)
-  allergens        String[] @default([])
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  carbsPerServing   Float
+  fatPerServing     Float
+  fiberPerServing   Float
+  imageUrl          String?
+  videoUrl          String?
+  // "curated" | "ai" | "user"
+  source            String
+  verified          Boolean  @default(false)
+  allergens         String[] @default([])
+  // V18: user-created private home recipes
+  userId            String?
+  isPrivate         Boolean  @default(false)
+  yieldGrams        Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  cuisine      Cuisine?    @relation(fields: [cuisineId], references: [id], onDelete: SetNull)
+  cuisine      Cuisine?     @relation(fields: [cuisineId], references: [id], onDelete: SetNull)
   diaryEntries DiaryEntry[]
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([cuisineId])
   @@index([dietCategory])
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------
@@ -370,7 +399,7 @@ model WorkoutPlan {
   generatedBy String
   createdAt   DateTime @default(now())
 
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessions WorkoutSession[]
 
   @@index([userId, weekStart])
@@ -481,4 +510,125 @@ model DataExport {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// V18 — Location-aware food database: taxonomy, aliases, portions
+// ---------------------------------------------------------------------------
+
+model FoodCategory {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  nameUrdu  String?
+  sortOrder Int     @default(0)
+
+  foods Food[]
+}
+
+model FoodAlias {
+  id       String @id @default(cuid())
+  foodId   String
+  alias    String
+  // 'en' | 'ur' | 'roman-ur'
+  language String @default("en")
+
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@index([alias])
+  @@index([foodId])
+}
+
+model HouseholdPortion {
+  id        String  @id @default(cuid())
+  foodId    String
+  label     String // e.g. "1 roti", "1 katori daal"
+  labelUrdu String?
+  grams     Float? // gram equivalent of the household measure
+  ml        Float? // ml equivalent (for drinks)
+  sortOrder Int     @default(0)
+
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@index([foodId])
+}
+
+// ---------------------------------------------------------------------------
+// V18 — Packaged products (Open Food Facts cache)
+// ---------------------------------------------------------------------------
+
+model CachedProduct {
+  // barcode is the id
+  id        String   @id
+  provider  String   @default("openfoodfacts")
+  payload   Json
+  fetchedAt DateTime @default(now())
+
+  @@index([fetchedAt])
+}
+
+// ---------------------------------------------------------------------------
+// V18 — Restaurants & menus
+// ---------------------------------------------------------------------------
+
+model Restaurant {
+  id              String    @id @default(cuid())
+  // 'google_places' | 'manual'
+  provider        String
+  providerPlaceId String?   @unique
+  name            String
+  address         String?
+  city            String?
+  country         String?
+  latitude        Float?
+  longitude       Float?
+  rating          Float?
+  priceLevel      Int?
+  website         String?
+  menuUrl         String?
+  lastCheckedAt   DateTime?
+  createdAt       DateTime  @default(now())
+
+  menuItems RestaurantMenuItem[]
+
+  @@index([city])
+}
+
+model RestaurantMenuItem {
+  id              String    @id @default(cuid())
+  restaurantId    String
+  name            String
+  description     String?
+  portion         String?
+  kcal            Float?
+  proteinG        Float?
+  carbsG          Float?
+  fatG            Float?
+  fiberG          Float?
+  // "restaurant_published" | "calculated_estimate" | "menu_photo_estimate"
+  //   | "user_submitted" | "unavailable"
+  nutritionStatus String    @default("unavailable")
+  assumptions     Json?
+  source          String?
+  lastVerifiedAt  DateTime?
+  createdAt       DateTime  @default(now())
+
+  restaurant  Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  corrections MenuCorrection[]
+
+  @@index([restaurantId])
+}
+
+model MenuCorrection {
+  id         String   @id @default(cuid())
+  menuItemId String
+  userId     String
+  note       String
+  // "open" | "accepted" | "rejected"
+  status     String   @default("open")
+  createdAt  DateTime @default(now())
+
+  menuItem RestaurantMenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([menuItemId])
 }

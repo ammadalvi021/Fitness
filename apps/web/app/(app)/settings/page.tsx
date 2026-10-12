@@ -12,10 +12,21 @@ import {
 } from "@/components/ui";
 import { GlassPanel, LuxButton, LuxDialog } from "@/components/luxury";
 import { ThemeSelector } from "@/components/ThemeSelector";
+import { COUNTRY_OPTIONS, LANGUAGE_OPTIONS } from "@/lib/onboarding-options";
+import { loadSwapsEnabled, saveSwapsEnabled } from "@/lib/ramadan";
 
 interface SettingsShape {
   units?: "metric" | "imperial";
   consents?: Record<string, boolean>;
+}
+
+interface ProfileLocaleShape {
+  country?: string;
+  cityRegion?: string | null;
+  language?: "en" | "ur" | "roman-ur";
+  unitSystem?: "metric" | "imperial";
+  ramadanMode?: boolean;
+  halalOnly?: boolean;
 }
 
 const CONSENT_OPTIONS = [
@@ -40,6 +51,11 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  // V18 — location & language (stored on the profile, changeable anytime).
+  const [locale, setLocale] = useState<ProfileLocaleShape | null>(null);
+  const [localeSaving, setLocaleSaving] = useState(false);
+  const [cityDraft, setCityDraft] = useState<string | null>(null);
+
   // Data export
   const [exportState, setExportState] = useState<
     "idle" | "requesting" | "pending" | "ready" | "failed"
@@ -52,6 +68,37 @@ export default function SettingsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // V18: food-logging preferences
+  const [swapsEnabled, setSwapsEnabled] = useState<boolean>(() => loadSwapsEnabled());
+  const [ramadanMode, setRamadanMode] = useState(false);
+  const [ramadanSaving, setRamadanSaving] = useState(false);
+
+  async function setRamadanModePref(on: boolean) {
+    setRamadanSaving(true);
+    setError(null);
+    try {
+      await api("/api/profile", { method: "PUT", body: { ramadanMode: on } });
+      setRamadanMode(on);
+      setNotice(on ? "Ramadan mode on — find the Ramadan hub in the menu." : "Ramadan mode off.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save Ramadan mode.");
+    } finally {
+      setRamadanSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    api<{ profile?: { ramadanMode?: boolean } }>("/api/profile")
+      .then((data) => {
+        if (!cancelled) setRamadanMode(Boolean(data.profile?.ramadanMode));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +114,22 @@ export default function SettingsPage() {
           setSettings({ consents: {} });
           setLoading(false);
         }
+      });
+    api<{ profile: ProfileLocaleShape | null }>("/api/profile")
+      .then((data) => {
+        if (!cancelled && data.profile) {
+          setLocale({
+            country: data.profile.country ?? "PK",
+            cityRegion: data.profile.cityRegion ?? "",
+            language: data.profile.language ?? "en",
+            unitSystem: data.profile.unitSystem ?? "metric",
+            ramadanMode: data.profile.ramadanMode ?? false,
+            halalOnly: data.profile.halalOnly ?? false,
+          });
+        }
+      })
+      .catch(() => {
+        /* locale stays null -> panel shows defaults */
       });
     return () => {
       cancelled = true;
@@ -89,6 +152,33 @@ export default function SettingsPage() {
 
   function setUnits(units: "metric" | "imperial") {
     persist({ ...settings, units });
+  }
+
+  /** V18 — persist one locale field to the profile. */
+  async function setLocaleField(patch: Partial<ProfileLocaleShape>) {
+    const next = { ...(locale ?? {}), ...patch };
+    setLocale(next);
+    setLocaleSaving(true);
+    setError(null);
+    try {
+      const res = await api<{ profile: ProfileLocaleShape }>("/api/profile", {
+        method: "PUT",
+        body: patch,
+      });
+      setLocale({
+        country: res.profile.country ?? "PK",
+        cityRegion: res.profile.cityRegion ?? "",
+        language: res.profile.language ?? "en",
+        unitSystem: res.profile.unitSystem ?? "metric",
+        ramadanMode: res.profile.ramadanMode ?? false,
+        halalOnly: res.profile.halalOnly ?? false,
+      });
+      setNotice("Location & language saved ✓");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't save location settings.");
+    } finally {
+      setLocaleSaving(false);
+    }
   }
 
   function setConsent(key: string, granted: boolean) {
@@ -208,6 +298,144 @@ export default function SettingsPage() {
               <option value="imperial">Imperial (lb, in)</option>
             </Select>
           </Field>
+        </div>
+      </GlassPanel>
+
+      {/* V18 — Location & language */}
+      <GlassPanel className="mt-4 p-6">
+        <h2 className="t-card-heading">Location & language</h2>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
+          Picks your food catalogue and the language for food names. Changeable anytime.
+        </p>
+        <div className="mt-4 grid gap-5 sm:grid-cols-2">
+          <Field label="Country" htmlFor="set-country">
+            <Select
+              id="set-country"
+              value={locale?.country ?? "PK"}
+              onChange={(e) => setLocaleField({ country: e.target.value })}
+              disabled={localeSaving}
+            >
+              {COUNTRY_OPTIONS.filter((o) => o.value !== "").map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="City / region" htmlFor="set-city">
+            <Input
+              id="set-city"
+              value={cityDraft ?? locale?.cityRegion ?? ""}
+              onChange={(e) => setCityDraft(e.target.value)}
+              onBlur={() => {
+                if (cityDraft !== null && cityDraft !== (locale?.cityRegion ?? "")) {
+                  setLocaleField({ cityRegion: cityDraft });
+                }
+                setCityDraft(null);
+              }}
+              placeholder="e.g. Lahore"
+              disabled={localeSaving}
+            />
+          </Field>
+          <Field label="Language" htmlFor="set-language">
+            <Select
+              id="set-language"
+              value={locale?.language ?? "en"}
+              onChange={(e) =>
+                setLocaleField({ language: e.target.value as "en" | "ur" | "roman-ur" })
+              }
+              disabled={localeSaving}
+            >
+              {LANGUAGE_OPTIONS.filter((o) => o.value !== "").map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Unit system" htmlFor="set-unitsys">
+            <Select
+              id="set-unitsys"
+              value={locale?.unitSystem ?? "metric"}
+              onChange={(e) =>
+                setLocaleField({ unitSystem: e.target.value as "metric" | "imperial" })
+              }
+              disabled={localeSaving}
+            >
+              <option value="metric">Metric (kg, cm, g)</option>
+              <option value="imperial">Imperial (lb, in, oz)</option>
+            </Select>
+          </Field>
+        </div>
+        <div className="mt-4 space-y-3">
+          {(
+            [
+              { key: "halalOnly", label: "Halal only", hint: "Keep non-halal foods out of meal plans." },
+              { key: "ramadanMode", label: "Ramadan mode", hint: "Sehri / Iftar meal types and fasting tools." },
+            ] as const
+          ).map((t) => {
+            const on = Boolean(locale?.[t.key]);
+            return (
+              <div
+                key={t.key}
+                className="flex items-start justify-between gap-4 rounded-xl border border-[var(--border)] p-4"
+                style={{ backgroundColor: "var(--bg-secondary)" }}
+              >
+                <div>
+                  <p className="text-sm font-medium text-[var(--text)]">{t.label}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{t.hint}</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  aria-label={t.label}
+                  disabled={localeSaving}
+                  onClick={() => setLocaleField({ [t.key]: !on })}
+                  className={`relative inline-flex h-8 min-w-[52px] shrink-0 items-center rounded-full px-1 transition-colors ${
+                    on ? "justify-end" : "justify-start"
+                  }`}
+                  style={{
+                    backgroundColor: on ? "var(--accent)" : "var(--border)",
+                  }}
+                >
+                  <span className="inline-block h-6 w-6 rounded-full bg-white shadow" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </GlassPanel>
+
+      {/* Food logging (V18) */}
+      <GlassPanel className="mt-4 p-6">
+        <h2 className="t-card-heading">Food logging</h2>
+        <div className="mt-4 space-y-3">
+          <label className="flex min-h-[44px] cursor-pointer items-center justify-between gap-4 rounded-xl border border-[var(--border)] p-4" style={{ backgroundColor: "var(--bg-secondary)" }}>
+            <span>
+              <span className="block text-sm font-medium text-[var(--text)]">Lighter alternatives</span>
+              <span className="block text-sm text-[var(--text-secondary)]">Show lower-calorie options of the same kind under food search results. Stored on this device only.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={swapsEnabled}
+              onChange={(e) => { saveSwapsEnabled(e.target.checked); setSwapsEnabled(e.target.checked); }}
+              className="h-5 w-5 shrink-0"
+              style={{ accentColor: "var(--brand)" }}
+              aria-label="Show lighter alternatives"
+            />
+          </label>
+          <label className="flex min-h-[44px] cursor-pointer items-center justify-between gap-4 rounded-xl border border-[var(--border)] p-4" style={{ backgroundColor: "var(--bg-secondary)" }}>
+            <span>
+              <span className="block text-sm font-medium text-[var(--text)]">Ramadan mode</span>
+              <span className="block text-sm text-[var(--text-secondary)]">Adds Sehri / Iftar meal types and the Ramadan hub. No prayer times — you set your own fasting window.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={ramadanMode}
+              onChange={(e) => void setRamadanModePref(e.target.checked)}
+              disabled={ramadanSaving}
+              className="h-5 w-5 shrink-0"
+              style={{ accentColor: "var(--brand)" }}
+              aria-label="Ramadan mode"
+            />
+          </label>
         </div>
       </GlassPanel>
 

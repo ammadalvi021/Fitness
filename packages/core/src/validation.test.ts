@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CoachMessageSchema,
+  CustomRecipePatchSchema,
+  CustomRecipeSchema,
   DiaryEntrySchema,
   LoginSchema,
   MeasurementSchema,
@@ -186,5 +188,81 @@ describe('OnboardingSchema (regression: full profile fields persist)', () => {
       expect(parsed.data.equipment).toEqual(['dumbbell']);
       expect(parsed.data.healthLimitations).toBe('none');
     }
+  });
+});
+
+describe('ProfileUpdateSchema (V18 location fields)', () => {
+  it('accepts a full location payload and normalizes the country code', () => {
+    const parsed = ProfileUpdateSchema.safeParse({
+      country: 'pk',
+      cityRegion: 'Lahore',
+      language: 'roman-ur',
+      unitSystem: 'metric',
+      ramadanMode: true,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.country).toBe('PK');
+      expect(parsed.data.cityRegion).toBe('Lahore');
+      expect(parsed.data.language).toBe('roman-ur');
+    }
+  });
+
+  it('accepts all three language options', () => {
+    for (const language of ['en', 'ur', 'roman-ur'] as const) {
+      expect(ProfileUpdateSchema.safeParse({ language }).success).toBe(true);
+    }
+  });
+
+  it('rejects invalid location values', () => {
+    expect(ProfileUpdateSchema.safeParse({ country: 'PKK' }).success).toBe(false);
+    expect(ProfileUpdateSchema.safeParse({ country: 'P' }).success).toBe(false);
+    expect(ProfileUpdateSchema.safeParse({ language: 'punjabi' }).success).toBe(false);
+    expect(ProfileUpdateSchema.safeParse({ unitSystem: 'us' }).success).toBe(false);
+    expect(ProfileUpdateSchema.safeParse({ cityRegion: '' }).success).toBe(false);
+    expect(ProfileUpdateSchema.safeParse({ ramadanMode: 'yes' }).success).toBe(false);
+  });
+
+  it('flows through OnboardingSchema unchanged', () => {
+    const parsed = OnboardingSchema.safeParse({
+      country: 'IN',
+      language: 'ur',
+      unitSystem: 'imperial',
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.country).toBe('IN');
+  });
+});
+
+describe('CustomRecipeSchema', () => {
+  const valid = {
+    name: 'My Daal',
+    ingredients: [
+      { name: 'Masoor daal (dry)', grams: 100, kcal: 352, proteinG: 24.6, carbsG: 63.4, fatG: 1.1, fiberG: 10.7 },
+      { name: 'Water', grams: 500 },
+    ],
+    portions: 2,
+    instructions: ['Boil the daal until soft.'],
+  };
+
+  it('accepts a valid custom recipe', () => {
+    expect(CustomRecipeSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('rejects empty ingredients, zero portions, and bad grams', () => {
+    expect(CustomRecipeSchema.safeParse({ ...valid, ingredients: [] }).success).toBe(false);
+    expect(CustomRecipeSchema.safeParse({ ...valid, portions: 0 }).success).toBe(false);
+    expect(
+      CustomRecipeSchema.safeParse({
+        ...valid,
+        ingredients: [{ name: 'Salt', grams: -5 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('patch schema allows partial updates', () => {
+    expect(CustomRecipePatchSchema.safeParse({ portions: 4 }).success).toBe(true);
+    expect(CustomRecipePatchSchema.safeParse({ portions: 0 }).success).toBe(false);
+    expect(CustomRecipePatchSchema.safeParse({}).success).toBe(true);
   });
 });

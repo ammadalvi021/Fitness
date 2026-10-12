@@ -48,7 +48,7 @@ import {
   Tooltip as LuxTooltip,
 } from "@/components/luxury";
 import { ExerciseIllustration, hasExerciseIllustration } from "@/components/ExerciseIllustration";
-import { useSession } from "../layout";
+import { useSession } from "@/components/session";
 
 /* ---------- defensive response shapes (API owned by other agents) -------- */
 
