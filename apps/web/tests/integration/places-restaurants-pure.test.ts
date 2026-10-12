@@ -8,19 +8,12 @@
  * - Manual restaurant creation: 201 + provider 'manual'; 400 on bad input.
  * - No-leak: API responses never contain the Places API key.
  */
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { prisma } from '@fitfusion/db';
-import { GET as nearbyGET } from '@/app/api/restaurants/nearby/route';
-import { parseLatLng, parseRadiusKm } from '@/lib/places/params';
-import { POST as createPOST } from '@/app/api/restaurants/route';
-import { GET as detailsGET } from '@/app/api/restaurants/[id]/route';
-import { POST as registerPOST } from '@/app/api/auth/register/route';
 
 /**
  * DB-FREE variant: pure provider/param/geo tests that run without PostgreSQL.
  * DB-backed route tests live in places-restaurants.test.ts.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseLatLng, parseRadiusKm } from '@/lib/places/params';
 import { getPlacesProvider, resetPlacesProviderCache } from '@/lib/places';
 import { GooglePlacesProvider } from '@/lib/places/google';

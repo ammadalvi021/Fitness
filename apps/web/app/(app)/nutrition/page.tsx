@@ -181,6 +181,30 @@ export default function NutritionDiaryPage() {
   /** V18: which search-row food has its "Lighter alternatives" expanded. */
   const [swapsFor, setSwapsFor] = useState<string | null>(null);
 
+  /** V19: internet food search (USDA + Open Food Facts) for the Search tab. */
+  interface WebFoodResult {
+    id: string;
+    name: string;
+    brand: string | null;
+    servingSize: number | null;
+    servingUnit: string | null;
+    kcal: number | null;
+    proteinG: number | null;
+    carbsG: number | null;
+    fatG: number | null;
+    fiberG: number | null;
+    source: 'USDA' | 'Open Food Facts';
+    sourceNote: string | null;
+    verification: 'estimate';
+    verificationBasis: string | null;
+  }
+  const [webResults, setWebResults] = useState<WebFoodResult[] | null>(null);
+  const [webSearching, setWebSearching] = useState(false);
+  const [webError, setWebError] = useState<string | null>(null);
+  const [webSources, setWebSources] = useState<{ usda: boolean; openFoodFacts: boolean } | null>(null);
+  const [webServings, setWebServings] = useState<Record<string, number>>({});
+  const [webAutoDoneFor, setWebAutoDoneFor] = useState<string>('');
+
   const [manual, setManual] = useState({
     name: '',
     servings: '1',
@@ -334,9 +358,149 @@ export default function NutritionDiaryPage() {
     }
   }
 
+  /** V19: renders the web-search results block for the Search tab. */
+  const renderWebResults = () => {
+    if (webSearching) {
+      return <Skeleton className="h-16 w-full" aria-label="Searching the web for foods" />;
+    }
+    if (webError) {
+      return (
+        <p role="alert" className="t-body" style={{ color: 'var(--error)' }}>
+          {webError}
+        </p>
+      );
+    }
+    if (!webResults) return null;
+    if (webResults.length === 0) {
+      return (
+        <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
+          Nothing on the web either. Try the Manual tab instead.
+        </p>
+      );
+    }
+    const mealType = (modal as { mealType: MealType } | null)?.mealType;
+    return (
+      <div className="space-y-2">
+        <p className="t-meta">
+          Web results
+          {webSources && (
+            <span>
+              {' '}
+              ·{' '}
+              {[webSources.usda && 'USDA', webSources.openFoodFacts && 'Open Food Facts']
+                .filter(Boolean)
+                .join(' + ')}
+            </span>
+          )}
+        </p>
+        <ul className="max-h-80 space-y-2 overflow-y-auto">
+          {webResults.map((r) => {
+            const hits = allergenHits([r.name, r.brand ?? ''], allergies);
+            const servings = Math.max(0.25, num(webServings[r.id], 1));
+            return (
+              <li
+                key={r.id}
+                className="rounded-xl border p-3"
+                style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="t-body font-medium">
+                      {r.name}
+                      {r.brand ? (
+                        <span style={{ color: 'var(--text-secondary)' }}> · {r.brand}</span>
+                      ) : null}
+                    </p>
+                    <p className="t-meta">
+                      {r.kcal != null ? (
+                        <>
+                          <span className="t-numeral">{Math.round(r.kcal)}</span> kcal /{' '}
+                        </>
+                      ) : (
+                        'No calorie data / '
+                      )}
+                      {r.servingSize ? `${r.servingSize} ${r.servingUnit ?? ''}`.trim() : 'serving'}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <LuxBadge>{r.source === 'USDA' ? 'USDA' : 'Open Food Facts'}</LuxBadge>
+                      <LuxBadge>Estimate</LuxBadge>
+                      {hits.length > 0 && (
+                        <LuxBadge tone="error">Contains your allergen: {hits.join(', ')}</LuxBadge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {r.kcal != null && mealType ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0.25}
+                      step={0.25}
+                      aria-label={`Servings of ${r.name}`}
+                      value={String(servings)}
+                      onChange={(e) =>
+                        setWebServings((s) => ({ ...s, [r.id]: num(e.target.value, 1) }))
+                      }
+                      className="min-h-[44px] w-20"
+                    />
+                    <span className="t-meta">servings</span>
+                    <LuxButton
+                      className="ml-auto"
+                      disabled={busyId === `web-${r.id}`}
+                      onClick={() => void handleWebAdd(r, mealType)}
+                      aria-label={`Add ${r.name} to ${mealLabel(mealType)}`}
+                    >
+                      {busyId === `web-${r.id}` ? 'Adding…' : 'Add'}
+                    </LuxButton>
+                  </div>
+                ) : (
+                  <p className="t-meta mt-2" style={{ color: 'var(--text-secondary)' }}>
+                    No calorie data for this item — add it via the Manual tab.
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  };
+
   /** V18: log a "Use instead" swap pick as the same meal (servings preserved). */
   async function handleUseInstead(raw: Record<string, unknown>, servings: number, mealType: MealType) {
     await handleAddFood(normalizeFoodResult(raw), mealType, servings);
+  }
+
+  /** V19: log a web-search result. foodId is null (not in our DB); the diary
+   *  stores it as a custom entry with source 'web'. Results without calorie
+   *  data can't be added — the UI disables their Add button. */
+  async function handleWebAdd(item: WebFoodResult, mealType: MealType) {
+    if (item.kcal == null) return;
+    const servings = Math.max(0.25, num(webServings[item.id], 1));
+    setBusyId(`web-${item.id}`);
+    setError(null);
+    try {
+      await postEntry({
+        date,
+        mealType,
+        foodId: null,
+        customName: item.brand ? `${item.name} (${item.brand})` : item.name,
+        servings,
+        nutrients: {
+          kcal: round1(num(item.kcal) * servings),
+          proteinG: round1(num(item.proteinG) * servings),
+          carbsG: round1(num(item.carbsG) * servings),
+          fatG: round1(num(item.fatG) * servings),
+          fiberG: round1(num(item.fiberG) * servings),
+        },
+        source: 'web',
+      });
+      setModal(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not add that food.');
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function handleManualAdd(mealType: MealType) {
@@ -607,6 +771,57 @@ export default function NutritionDiaryPage() {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
   }, [foodQuery, tab, modal]);
+
+  /** V19: run the unified internet food search. */
+  const runWebSearch = useCallback(
+    async (q: string) => {
+      const query = q.trim();
+      if (query.length < 2 || webSearching) return;
+      setWebSearching(true);
+      setWebError(null);
+      try {
+        const data = await api<{
+          results: WebFoodResult[];
+          sources: { usda: boolean; openFoodFacts: boolean };
+        }>(`/api/foods/web-search?q=${encodeURIComponent(query)}`);
+        setWebResults(data.results ?? []);
+        setWebSources(data.sources ?? null);
+      } catch (e) {
+        setWebResults([]);
+        setWebError(e instanceof ApiError ? e.message : 'Web search failed — try the Manual tab.');
+      } finally {
+        setWebSearching(false);
+      }
+    },
+    [webSearching],
+  );
+
+  // V19: when the local library has nothing for the query, automatically try
+  // the web once per query. Manual re-runs stay available via the button.
+  useEffect(() => {
+    if (tab !== 'search' || !modal) return;
+    if (foodSearching) return;
+    const q = foodQuery.trim();
+    if (q.length < 2) {
+      setWebResults(null);
+      setWebError(null);
+      setWebSources(null);
+      setWebAutoDoneFor('');
+      return;
+    }
+    if (foodResults && foodResults.length === 0 && webAutoDoneFor !== q) {
+      setWebAutoDoneFor(q);
+      void runWebSearch(q);
+    }
+  }, [foodResults, foodSearching, foodQuery, tab, modal, webAutoDoneFor, runWebSearch]);
+
+  // V19: reset web state whenever the query changes so a new query re-arms auto-search.
+  useEffect(() => {
+    setWebAutoDoneFor('');
+    setWebResults(null);
+    setWebError(null);
+    setWebSources(null);
+  }, [foodQuery]);
 
   useEffect(() => {
     if (tab !== 'recipe' || !modal || pickedRecipe) return;
@@ -1068,9 +1283,27 @@ export default function NutritionDiaryPage() {
             />
             {foodSearching && <Skeleton className="h-16 w-full" />}
             {foodResults && foodResults.length === 0 && !foodSearching && (
-              <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
-                No foods found. Try the Manual tab instead.
-              </p>
+              <div className="space-y-3">
+                <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
+                  Nothing in your food library — checking the web…
+                </p>
+                {renderWebResults()}
+              </div>
+            )}
+            {foodResults && foodResults.length > 0 && !webResults && !webSearching && !webError && (
+              <button
+                type="button"
+                onClick={() => void runWebSearch(foodQuery)}
+                className="t-body w-full rounded-xl border border-dashed px-4 py-3 text-center"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              >
+                Not finding it? <span className="underline underline-offset-2">Search the web</span>
+              </button>
+            )}
+            {foodResults && foodResults.length > 0 && (webSearching || webError || (webResults && webResults.length > 0)) && (
+              <div className="space-y-3">
+                {renderWebResults()}
+              </div>
             )}
             <ul className="max-h-80 space-y-2 overflow-y-auto">
               {(foodResults ?? []).map((f) => {

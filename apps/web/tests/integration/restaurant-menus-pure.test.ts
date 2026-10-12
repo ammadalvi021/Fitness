@@ -7,9 +7,6 @@
  * - extract -> confirm never invents (unmatched -> 'unavailable', kcal null)
  * - diary logging of menu items via the existing POST /api/diary
  */
-import { NextRequest } from 'next/server';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-
 /**
  * DB-FREE variant: estimateFromRecipe math tests (Phase D).
  * DB-backed menu route tests live in restaurant-menus.test.ts.

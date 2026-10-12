@@ -101,6 +101,9 @@ export const OnboardingSchema = ProfileUpdateSchema.extend({
 });
 export type OnboardingInput = z.infer<typeof OnboardingSchema>;
 
+/** Where a diary entry's numbers came from (client-declared, server-validated). */
+export const DiarySourceEnum = z.enum(['manual', 'recipe', 'web', 'scan']);
+
 export const DiaryEntrySchema = z.object({
   date: DateString,
   mealType: MealTypeEnum,
@@ -113,6 +116,7 @@ export const DiaryEntrySchema = z.object({
   fatG: z.number().min(0).optional(),
   fiberG: z.number().min(0).optional(),
   idempotencyKey: z.string().min(1).max(100).optional(),
+  source: DiarySourceEnum.optional(),
 });
 export type DiaryEntryInput = z.infer<typeof DiaryEntrySchema>;
 

@@ -120,7 +120,7 @@ const MORE_CARDS: HubCard[] = [
   },
 ];
 
-function HubGrid({ cards }: { cards: HubCard[] }) {
+function HubGrid({ cards, showUrdu }: { cards: HubCard[]; showUrdu: boolean }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {cards.map((c) => {
@@ -152,9 +152,11 @@ function HubGrid({ cards }: { cards: HubCard[] }) {
                     </span>
                   )}
                 </span>
-                <span className="mt-0.5 block text-sm text-[var(--accent)]" lang="ur">
-                  {c.titleUrdu}
-                </span>
+                {showUrdu && (
+                  <span className="mt-0.5 block text-sm text-[var(--accent)]" lang="ur">
+                    {c.titleUrdu}
+                  </span>
+                )}
                 <span className="mt-1 block text-xs text-[var(--text-secondary)]">
                   {c.hint}
                 </span>
@@ -169,9 +171,11 @@ function HubGrid({ cards }: { cards: HubCard[] }) {
 
 export default function LogHubPage() {
   const session = useSession();
-  const ramadanMode = Boolean(
-    (session.profile as Record<string, unknown> | null)?.ramadanMode,
-  );
+  const profile = (session.profile as Record<string, unknown> | null) ?? null;
+  const ramadanMode = Boolean(profile?.ramadanMode);
+  // Urdu-script subtitles only when the user chose Urdu. English and
+  // Roman Urdu both use the Latin script, so no Urdu text is shown.
+  const showUrdu = profile?.language === "ur";
 
   return (
     <div className="anim-page-enter">
@@ -181,12 +185,12 @@ export default function LogHubPage() {
       </p>
 
       <div className="mt-6">
-        <HubGrid cards={CARDS} />
+        <HubGrid cards={CARDS} showUrdu={showUrdu} />
       </div>
 
       <h2 className="t-card-heading mt-8">More ways to log</h2>
       <div className="mt-3">
-        <HubGrid cards={MORE_CARDS} />
+        <HubGrid cards={MORE_CARDS} showUrdu={showUrdu} />
       </div>
 
       {ramadanMode && (

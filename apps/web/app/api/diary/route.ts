@@ -72,8 +72,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Never trust client totals: recompute from the Food when a foodId is given.
+  // The client may declare where numbers came from (manual/recipe/web/scan);
+  // anything else falls back to 'manual'.
   let nutrients: Nutrients;
-  let source = 'manual';
+  const source = input.source ?? 'manual';
   if (input.foodId) {
     const food = await prisma.food.findUnique({ where: { id: input.foodId } });
     if (!food) {
