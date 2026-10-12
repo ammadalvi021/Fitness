@@ -720,16 +720,17 @@ export default function NutritionDiaryPage() {
         ) : (
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
             <div className="flex flex-col items-center gap-2">
+              <h2 className="t-meta flex items-center gap-1">
+                Calories
+                <Tooltip tip="Targets are estimated from your profile (age, sex, height, weight, activity level, and goal) — complete your profile for personalized targets.">
+                  <Info size={13} aria-hidden="true" className="cursor-help" style={{ color: 'var(--text-secondary)' }} />
+                </Tooltip>
+              </h2>
               <div className="relative">
-                <ProgressRing value={caloriePct} size={150} showValue={false} label="Calories consumed vs target" />
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="t-numeral text-3xl">{Math.round(consumed)}</span>
-                  <span className="t-meta mt-1 flex items-center gap-1">
-                    of {kcalTarget} kcal
-                    <Tooltip tip="Targets are estimated from your profile (age, sex, height, weight, activity level, and goal) — complete your profile for personalized targets.">
-                      <Info size={13} aria-hidden="true" className="cursor-help" style={{ color: 'var(--text-secondary)' }} />
-                    </Tooltip>
-                  </span>
+                <ProgressRing value={caloriePct} size={160} showValue={false} label="Calories consumed vs target" />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+                  <span className="t-numeral text-3xl leading-none">{Math.round(consumed).toLocaleString()}</span>
+                  <span className="t-meta mt-1.5">of {kcalTarget.toLocaleString()} kcal</span>
                 </div>
               </div>
               <p className="t-body text-center" style={{ color: 'var(--text-secondary)' }}>

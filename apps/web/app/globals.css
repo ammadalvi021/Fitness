@@ -5,11 +5,15 @@
 /* ==========================================================================
    FitFusion AI — luxury design system tokens
    --------------------------------------------------------------------------
-   Five themes are driven by `data-theme` on <html> (set by the no-flash
-   inline script + ThemeProvider). The three dark themes also carry the
-   `dark` class so every existing `dark:` Tailwind variant keeps working.
-   `system` is never a token set: it resolves at runtime to obsidian-gold
-   (device dark) or light-luxe (device light).
+   Eight themes are driven by `data-theme` on <html> (set by the no-flash
+   inline script + ThemeProvider): the four dark themes carry the `dark`
+   class so every existing `dark:` Tailwind variant keeps working, the
+   three *-light themes and light-luxe do not. `system` is never a token
+   set: it resolves at runtime to obsidian-gold (device dark) or
+   light-luxe (device light).
+   Light-theme contrast approach: accent colors are DEEPENED so they read
+   on light backgrounds; --text and --text-secondary are verified to pass
+   WCAG AA (≥4.5:1) against --bg (see per-token comments).
    ========================================================================== */
 
 :root {
@@ -100,6 +104,78 @@ html[data-theme="light-luxe"] {
   --text-secondary: #5c5a54; /* ~6.3:1 on #FAF8F3 — passes WCAG AA */
   --on-accent: #1c1b18;
   --border: rgba(169, 135, 69, 0.28);
+  --success: #15803d;
+  --warning: #b45309;
+  --error: #dc2626;
+
+  --brand-primary: var(--accent);
+  --brand-primary-dark: var(--accent-muted);
+  --brand-accent: var(--accent);
+  --brand-success: var(--success);
+  --brand-warning: var(--warning);
+  --brand-danger: var(--error);
+}
+
+html[data-theme="obsidian-gold-light"] {
+  --bg: #faf8f3;
+  --bg-elevated: #ffffff;
+  --bg-secondary: #f1ede3;
+  --accent: #a98745; /* deepened gold — readable on warm white */
+  --accent-muted: #7a6234;
+  --gold: var(--accent);
+  --gold-muted: var(--accent-muted);
+  --text: #1c1b18; /* ~16.2:1 on #FAF8F3 — passes WCAG AA */
+  --text-secondary: #5c5a54; /* ~6.5:1 on #FAF8F3 — passes WCAG AA */
+  --on-accent: #1c1b18; /* ~5.1:1 on #A98745 — passes WCAG AA */
+  --border: rgba(169, 135, 69, 0.28);
+  --success: #15803d;
+  --warning: #b45309;
+  --error: #dc2626;
+
+  --brand-primary: var(--accent);
+  --brand-primary-dark: var(--accent-muted);
+  --brand-accent: var(--accent);
+  --brand-success: var(--success);
+  --brand-warning: var(--warning);
+  --brand-danger: var(--error);
+}
+
+html[data-theme="midnight-emerald-light"] {
+  --bg: #f4faf7;
+  --bg-elevated: #ffffff;
+  --bg-secondary: #e7f0eb;
+  --accent: #0e7a55; /* deepened emerald — readable on pale mint */
+  --accent-muted: #0a5c40;
+  --gold: var(--accent);
+  --gold-muted: var(--accent-muted);
+  --text: #121915; /* ~16.9:1 on #F4FAF7 — passes WCAG AA */
+  --text-secondary: #4e5d55; /* ~6.6:1 on #F4FAF7 — passes WCAG AA */
+  --on-accent: #ffffff; /* ~5.3:1 on #0E7A55 — passes WCAG AA */
+  --border: rgba(14, 122, 85, 0.22);
+  --success: #15803d;
+  --warning: #b45309;
+  --error: #dc2626;
+
+  --brand-primary: var(--accent);
+  --brand-primary-dark: var(--accent-muted);
+  --brand-accent: var(--accent);
+  --brand-success: var(--success);
+  --brand-warning: var(--warning);
+  --brand-danger: var(--error);
+}
+
+html[data-theme="slate-silver-light"] {
+  --bg: #f7f8fa;
+  --bg-elevated: #ffffff;
+  --bg-secondary: #ebedf1;
+  --accent: #5b6b7f; /* deepened slate — readable on cool white */
+  --accent-muted: #46536a;
+  --gold: var(--accent);
+  --gold-muted: var(--accent-muted);
+  --text: #15181d; /* ~16.7:1 on #F7F8FA — passes WCAG AA */
+  --text-secondary: #4e5866; /* ~6.8:1 on #F7F8FA — passes WCAG AA */
+  --on-accent: #ffffff; /* ~5.5:1 on #5B6B7F — passes WCAG AA */
+  --border: rgba(91, 107, 127, 0.24);
   --success: #15803d;
   --warning: #b45309;
   --error: #dc2626;

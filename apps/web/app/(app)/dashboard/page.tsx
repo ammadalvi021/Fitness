@@ -459,7 +459,12 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-3">
         {/* Calories */}
         <GlassPanel className="flex flex-col items-center gap-2 p-6">
-          <h2 className="t-meta self-start">Calories</h2>
+          <h2 className="t-meta flex items-center gap-1 self-start">
+            Calories
+            <LuxTooltip tip="Estimated with the Mifflin-St Jeor equation from your age, sex, height and weight, adjusted for your activity level and goal.">
+              <Info size={13} aria-hidden="true" className="cursor-help" style={{ color: "var(--text-secondary)" }} />
+            </LuxTooltip>
+          </h2>
           {diaryStatus === "loading" ? (
             <SectionSkeleton className="h-44 w-44 rounded-full" />
           ) : diaryStatus === "error" ? (
@@ -473,15 +478,12 @@ export default function DashboardPage() {
           ) : (
             <>
               <div className="relative">
-                <ProgressRing value={caloriePct} size={150} showValue={false} label="Calories consumed vs target" />
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="t-numeral text-3xl">{Math.round(consumed.kcal)}</span>
-                  <span className="t-meta mt-1 flex items-center gap-1">
-                    of {targetKcal} kcal target
-                    <LuxTooltip tip="Estimated with the Mifflin-St Jeor equation from your age, sex, height and weight, adjusted for your activity level and goal.">
-                      <Info size={13} aria-hidden="true" className="cursor-help" style={{ color: "var(--text-secondary)" }} />
-                    </LuxTooltip>
+                <ProgressRing value={caloriePct} size={160} showValue={false} label="Calories consumed vs target" />
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+                  <span className="t-numeral text-3xl leading-none">
+                    {Math.round(consumed.kcal).toLocaleString()}
                   </span>
+                  <span className="t-meta mt-1.5">of {targetKcal.toLocaleString()} kcal</span>
                 </div>
               </div>
               {diaryStatus === "empty" ? (

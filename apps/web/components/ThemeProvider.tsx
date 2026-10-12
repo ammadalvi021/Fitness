@@ -11,8 +11,11 @@ import type { ReactNode } from "react";
  *  luxury variant (obsidian-gold / light-luxe) — it is never a token set. */
 export type Theme =
   | "obsidian-gold"
+  | "obsidian-gold-light"
   | "midnight-emerald"
+  | "midnight-emerald-light"
   | "slate-silver"
+  | "slate-silver-light"
   | "light-luxe"
   | "system";
 
@@ -21,16 +24,22 @@ export type ResolvedTheme = Exclude<Theme, "system">;
 
 export const THEMES: readonly Theme[] = [
   "obsidian-gold",
+  "obsidian-gold-light",
   "midnight-emerald",
+  "midnight-emerald-light",
   "slate-silver",
+  "slate-silver-light",
   "light-luxe",
   "system",
 ] as const;
 
 export const THEME_LABELS: Record<Theme, string> = {
   "obsidian-gold": "Obsidian Gold",
+  "obsidian-gold-light": "Obsidian Gold — Light",
   "midnight-emerald": "Midnight Emerald",
+  "midnight-emerald-light": "Midnight Emerald — Light",
   "slate-silver": "Slate Silver",
+  "slate-silver-light": "Slate Silver — Light",
   "light-luxe": "Light Luxe",
   system: "System (auto)",
 };
@@ -48,8 +57,11 @@ const STORAGE_KEY = "ff-theme";
 
 function isTheme(value: string | null | undefined): value is Theme {
   return value === "obsidian-gold" ||
+    value === "obsidian-gold-light" ||
     value === "midnight-emerald" ||
+    value === "midnight-emerald-light" ||
     value === "slate-silver" ||
+    value === "slate-silver-light" ||
     value === "light-luxe" ||
     value === "system";
 }
@@ -168,7 +180,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /** Cycle through all five themes (backward-compatible toggle). */
+  /** Cycle through all eight themes (backward-compatible toggle). */
   const toggle = () => {
     const idx = THEMES.indexOf(themeRef.current);
     setTheme(THEMES[(idx + 1) % THEMES.length]);
@@ -186,4 +198,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
  * stored theme before first paint — no flash of the wrong theme.
  * Uses the same storage key as ThemeProvider.
  */
-export const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem('${STORAGE_KEY}');var v=['obsidian-gold','midnight-emerald','slate-silver','light-luxe','system'];var t=v.indexOf(s)>=0?s:'obsidian-gold';var r=t==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'obsidian-gold':'light-luxe'):t;var d=document.documentElement;d.dataset.theme=r;d.classList.toggle('dark',r!=='light-luxe');}catch(e){try{document.documentElement.dataset.theme='obsidian-gold';}catch(_){}}})();`;
+export const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem('${STORAGE_KEY}');var v=['obsidian-gold','obsidian-gold-light','midnight-emerald','midnight-emerald-light','slate-silver','slate-silver-light','light-luxe','system'];var t=v.indexOf(s)>=0?s:'obsidian-gold';var r=t==='system'?(window.matchMedia('(prefers-color-scheme: dark)').matches?'obsidian-gold':'light-luxe'):t;var d=document.documentElement;d.dataset.theme=r;var dk=['obsidian-gold','midnight-emerald','slate-silver'];d.classList.toggle('dark',dk.indexOf(r)>=0);}catch(e){try{document.documentElement.dataset.theme='obsidian-gold';}catch(_){}}})();`;

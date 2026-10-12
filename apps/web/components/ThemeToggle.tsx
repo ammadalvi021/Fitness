@@ -3,7 +3,7 @@
 import { Moon, Sun } from "lucide-react";
 import { isDarkTheme, useTheme } from "./ThemeProvider";
 
-/** Theme cycle button: steps through all five themes (44px touch target). */
+/** Theme cycle button: steps through all eight themes (44px touch target). */
 export function ThemeToggle() {
   const { resolvedTheme, toggle } = useTheme();
   const isDark = isDarkTheme(resolvedTheme);

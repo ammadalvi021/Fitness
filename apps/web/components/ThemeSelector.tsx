@@ -1,13 +1,14 @@
 "use client";
 
 import { Palette } from "lucide-react";
-import { THEMES, THEME_LABELS, useTheme } from "./ThemeProvider";
+import { THEME_LABELS, useTheme } from "./ThemeProvider";
 import type { Theme } from "./ThemeProvider";
 
 /**
- * ThemeSelector — a labeled theme picker listing all five themes with
- * friendly names. Drop it into Settings, nav, or any preferences surface.
- * 44px minimum touch target, fully keyboard accessible (native <select>).
+ * ThemeSelector — a labeled theme picker listing all eight themes with
+ * friendly names, grouped by color family. Drop it into Settings, nav, or
+ * any preferences surface. 44px minimum touch target, fully keyboard
+ * accessible (native <select> with <optgroup>).
  *
  * `compact` renders an icon-only cycle button (Palette) for tight surfaces
  * like the desktop sidebar footer. Tooltip + aria-label name the action;
@@ -62,11 +63,22 @@ export function ThemeSelector({
           color: "var(--text)",
         }}
       >
-        {THEMES.map((t) => (
-          <option key={t} value={t}>
-            {THEME_LABELS[t]}
-          </option>
-        ))}
+        <optgroup label="Obsidian Gold">
+          <option value="obsidian-gold">{THEME_LABELS["obsidian-gold"]} (Dark)</option>
+          <option value="obsidian-gold-light">{THEME_LABELS["obsidian-gold-light"]}</option>
+        </optgroup>
+        <optgroup label="Midnight Emerald">
+          <option value="midnight-emerald">{THEME_LABELS["midnight-emerald"]} (Dark)</option>
+          <option value="midnight-emerald-light">{THEME_LABELS["midnight-emerald-light"]}</option>
+        </optgroup>
+        <optgroup label="Slate Silver">
+          <option value="slate-silver">{THEME_LABELS["slate-silver"]} (Dark)</option>
+          <option value="slate-silver-light">{THEME_LABELS["slate-silver-light"]}</option>
+        </optgroup>
+        <optgroup label="Other">
+          <option value="light-luxe">{THEME_LABELS["light-luxe"]}</option>
+          <option value="system">{THEME_LABELS["system"]}</option>
+        </optgroup>
       </select>
     </div>
   );
