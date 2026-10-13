@@ -45,6 +45,7 @@ model User {
   dataExports        DataExport[]
   recipes            Recipe[]
   menuCorrections    MenuCorrection[]
+  healthConnections  HealthConnection[]
 }
 
 model VerificationToken {
@@ -133,6 +134,11 @@ model Profile {
   // 'metric' | 'imperial'
   unitSystem            String    @default("metric")
   ramadanMode           Boolean   @default(false)
+  // V20 Feature 5: active intermittent-fast record (JSON), cross-device sync.
+  fastingSession        Json?
+  // V20 Feature 1: optional user-set daily calorie target override (kcal),
+  // e.g. from the adaptive-TDEE dashboard card. NULL = computed target.
+  calorieTargetOverrideKcal Int?
   updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -187,7 +193,8 @@ model StripeWebhookEvent {
 model Measurement {
   id         String   @id @default(cuid())
   userId     String
-  // "weight" | "height" | "waist" | "bmi"
+  // "weight" | "height" | "waist" | "bmi" | "steps" ("steps" = daily step
+  // counts imported from a connected health provider, unit "steps")
   type       String
   value      Float
   unit       String
@@ -223,6 +230,10 @@ model Food {
   barcode       String?   @unique
   sourceRef     String?
   lastCheckedAt DateTime?
+  // V20: micronutrient snapshot, typed JSON (closed MicroKey shape — see
+  // packages/core/src/micronutrients.ts; absent key = "not tracked",
+  // never 0). Null for foods with no micro data (all seeded foods).
+  micros        Json?
   createdAt     DateTime  @default(now())
 
   diaryEntries DiaryEntry[]
@@ -249,6 +260,10 @@ model DiaryEntry {
   scanId         String?
   recipeId       String?
   idempotencyKey String?
+  // V20: micro snapshot at log time (closed MicroKey shape, standard
+  // units; absent key = "not tracked"). Entries logged from USDA web
+  // results carry their micros; everything else is null.
+  micros         Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -631,4 +646,26 @@ model MenuCorrection {
   user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([menuItemId])
+}
+
+// ---------------------------------------------------------------------------
+// Health sync (V20 Feature 6) — Google Fit OAuth connection
+// ---------------------------------------------------------------------------
+
+model HealthConnection {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  // "google" (Apple HealthKit is not reachable from a web PWA — see docs/health-sync.md)
+  provider            String    @default("google")
+  // AES-256-GCM encrypted OAuth tokens (see apps/web/lib/health-crypto.ts).
+  // Never plaintext, never returned by any API.
+  accessTokenEnc      String
+  refreshTokenEnc     String?
+  accessTokenExpiresAt DateTime
+  lastSyncAt          DateTime?
+  lastSyncError       String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

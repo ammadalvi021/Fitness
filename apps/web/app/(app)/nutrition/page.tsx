@@ -6,6 +6,14 @@ import { api, ApiError } from '@/lib/api';
 import { ChevronLeft, ChevronRight, Copy, Info, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Input, Modal, Select, Skeleton } from '@/components/ui';
 import { SwapsSection } from '@/components/SwapsSection';
+import { MicronutrientSection } from '@/components/MicronutrientSection';
+import {
+  DAILY_VALUES,
+  scaleMicros,
+  sumEntryMicros,
+  trackedMicroKeys,
+  type MicroNutrients,
+} from '@/lib/daily-values';
 import {
   EmptyStateLux,
   GlassPanel,
@@ -193,6 +201,8 @@ export default function NutritionDiaryPage() {
     carbsG: number | null;
     fatG: number | null;
     fiberG: number | null;
+    /** V20: USDA micros (per serving); null = not tracked. */
+    micros: MicroNutrients | null;
     source: 'USDA' | 'Open Food Facts';
     sourceNote: string | null;
     verification: 'estimate';
@@ -428,6 +438,19 @@ export default function NutritionDiaryPage() {
                         <LuxBadge tone="error">Contains your allergen: {hits.join(', ')}</LuxBadge>
                       )}
                     </div>
+                    {/* V20: available micros from USDA — never shown as 0 when missing. */}
+                    {r.source === 'USDA' &&
+                      (() => {
+                        const keys = trackedMicroKeys(r.micros);
+                        if (keys.length === 0) return null;
+                        const shown = keys.slice(0, 5).map((k) => DAILY_VALUES[k].label);
+                        return (
+                          <p className="t-meta mt-1" style={{ color: 'var(--text-secondary)' }}>
+                            Micros: {shown.join(', ')}
+                            {keys.length > shown.length ? ` +${keys.length - shown.length} more` : ''}
+                          </p>
+                        );
+                      })()}
                   </div>
                 </div>
                 {r.kcal != null && mealType ? (
@@ -473,7 +496,8 @@ export default function NutritionDiaryPage() {
 
   /** V19: log a web-search result. foodId is null (not in our DB); the diary
    *  stores it as a custom entry with source 'web'. Results without calorie
-   *  data can't be added — the UI disables their Add button. */
+   *  data can't be added — the UI disables their Add button.
+   *  V20: micros are scaled by servings and snapshotted on the entry. */
   async function handleWebAdd(item: WebFoodResult, mealType: MealType) {
     if (item.kcal == null) return;
     const servings = Math.max(0.25, num(webServings[item.id], 1));
@@ -493,6 +517,7 @@ export default function NutritionDiaryPage() {
           fatG: round1(num(item.fatG) * servings),
           fiberG: round1(num(item.fiberG) * servings),
         },
+        micros: scaleMicros(item.micros, servings),
         source: 'web',
       });
       setModal(null);
@@ -1051,6 +1076,20 @@ export default function NutritionDiaryPage() {
           </div>
         )}
       </GlassPanel>
+
+      {/* ------- micronutrients (V20) ------- */}
+      {entries === null ? (
+        <GlassPanel className="p-6">
+          <Skeleton className="h-4 w-1/3" />
+          <div className="mt-3 space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-4/6" />
+          </div>
+        </GlassPanel>
+      ) : (
+        <MicronutrientSection totals={sumEntryMicros(entries)} />
+      )}
 
       {/* ------- water ------- */}
       <GlassPanel className="p-6">

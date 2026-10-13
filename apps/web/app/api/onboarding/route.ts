@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@fitfusion/db';
 import { OnboardingSchema } from '@fitfusion/core';
 import { requireUser } from '@/lib/auth';
+import { toPrismaFastingSession } from '@/lib/fasting-server';
 import { apiError, apiOk, readJson, zodMessage } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
@@ -19,12 +20,13 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return apiError('validation_error', 'Invalid onboarding data', 400, zodMessage(parsed.error));
   }
-  const { weightKg, ...profileFields } = parsed.data;
+  const { weightKg, fastingSession, ...profileFields } = parsed.data;
+  const sessionPatch = toPrismaFastingSession(fastingSession);
 
   const profile = await prisma.profile.upsert({
     where: { userId: s.user.id },
-    update: { ...profileFields, onboardingCompletedAt: new Date() },
-    create: { userId: s.user.id, ...profileFields, onboardingCompletedAt: new Date() },
+    update: { ...profileFields, ...sessionPatch, onboardingCompletedAt: new Date() },
+    create: { userId: s.user.id, ...profileFields, ...sessionPatch, onboardingCompletedAt: new Date() },
   });
 
   let measurement = null;

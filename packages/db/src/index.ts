@@ -14,6 +14,8 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 export type { Prisma } from '@prisma/client';
+// V20 Feature 5: runtime Prisma namespace (DbNull for clearing nullable Json).
+export { Prisma as PrismaRuntime } from '@prisma/client';
 export type {
   User,
   VerificationToken,

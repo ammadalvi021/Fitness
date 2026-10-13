@@ -26,6 +26,8 @@ export interface Targets {
   waterMl: number;
   /** The goal the targets were computed for (may be downgraded to maintain). */
   goal: Goal;
+  /** True when the user overrode their daily calorie target (V20). */
+  overrideActive: boolean;
 }
 
 export function num(v: unknown, fallback = 0): number {
@@ -76,17 +78,42 @@ export function profileTargets(
   const macroRes = calculateMacros({ calories: calorie.targetKcal, goal, weightKg });
   const waterMl = waterGuidanceMl({ weightKg, activityLevel: activity }).mlPerDay;
 
+  // V20: a user-set calorie target override replaces the computed target.
+  // Macros are recomputed from the override so the ring/bar math stays
+  // consistent; the Mifflin-derived TDEE is still reported for comparison.
+  const overrideKcalRaw = profile.calorieTargetOverrideKcal;
+  const overrideKcal =
+    typeof overrideKcalRaw === "number" &&
+    Number.isFinite(overrideKcalRaw) &&
+    overrideKcalRaw >= 1200 &&
+    overrideKcalRaw <= 6000
+      ? Math.round(overrideKcalRaw)
+      : null;
+  let finalCalorie = calorie;
+  let finalMacros = {
+    proteinG: Math.round(macroRes.proteinG),
+    carbsG: Math.round(macroRes.carbsG),
+    fatG: Math.round(macroRes.fatG),
+    fiberG: Math.round(macroRes.fiberG),
+  };
+  if (overrideKcal !== null) {
+    finalCalorie = { ...calorie, targetKcal: overrideKcal };
+    const om = calculateMacros({ calories: overrideKcal, goal, weightKg });
+    finalMacros = {
+      proteinG: Math.round(om.proteinG),
+      carbsG: Math.round(om.carbsG),
+      fatG: Math.round(om.fatG),
+      fiberG: Math.round(om.fiberG),
+    };
+  }
+
   return {
     bmr: Math.round(bmr),
     tdee: Math.round(tdee),
-    calorie,
-    macros: {
-      proteinG: Math.round(macroRes.proteinG),
-      carbsG: Math.round(macroRes.carbsG),
-      fatG: Math.round(macroRes.fatG),
-      fiberG: Math.round(macroRes.fiberG),
-    },
+    calorie: finalCalorie,
+    macros: finalMacros,
     waterMl,
     goal,
+    overrideActive: overrideKcal !== null,
   };
 }

@@ -4,6 +4,8 @@
  */
 
 import { z } from 'zod';
+import { FastingRecordSchema } from './fasting.js';
+import { MicrosSchema } from './micronutrients.js';
 
 const SexEnum = z.enum(['male', 'female', 'other', 'prefer_not_to_say']);
 const ActivityLevelEnum = z.enum([
@@ -93,6 +95,13 @@ export const ProfileUpdateSchema = z.object({
   unitSystem: z.enum(['metric', 'imperial']).optional(),
   // V18: Ramadan mode toggle (DB column already exists; Phase A wires UI).
   ramadanMode: z.boolean().optional(),
+  // V20 Feature 1: user-set daily calorie target override (kcal). Same
+  // bounds as the adaptive-TDEE clamp; null clears it back to the
+  // computed (Mifflin-St Jeor + goal) target.
+  calorieTargetOverrideKcal: z.number().int().min(1200).max(6000).nullish(),
+  // V20: active intermittent-fast record, cross-device (DB JSON column).
+  // Nullable so the client can clear the server-side fast (null = no active fast).
+  fastingSession: FastingRecordSchema.nullable().optional(),
 });
 export type ProfileUpdateInput = z.infer<typeof ProfileUpdateSchema>;
 
@@ -115,13 +124,23 @@ export const DiaryEntrySchema = z.object({
   carbsG: z.number().min(0).optional(),
   fatG: z.number().min(0).optional(),
   fiberG: z.number().min(0).optional(),
+  /**
+   * V20: micronutrient snapshot for the entry, closed MicroKey shape in
+   * standard units. Same basis as kcal/proteinG (entry totals — the client
+   * scales by servings before sending, exactly like the macro nutrients).
+   * Stored as-is on the diary entry: the diary keeps the snapshot from
+   * log time. Absent/null = not tracked.
+   */
+  micros: MicrosSchema,
   idempotencyKey: z.string().min(1).max(100).optional(),
   source: DiarySourceEnum.optional(),
 });
 export type DiaryEntryInput = z.infer<typeof DiaryEntrySchema>;
 
 export const MeasurementSchema = z.object({
-  type: z.enum(['weight', 'height', 'waist', 'bmi']),
+  // 'steps' = daily step counts imported from a connected health provider
+  // (unit "steps"); landed in the existing Measurement table (V20 Feature 6).
+  type: z.enum(['weight', 'height', 'waist', 'bmi', 'steps']),
   value: z.number().positive('Value must be positive'),
   unit: z.string().min(1).max(20),
   recordedAt: z.coerce.date().optional(),

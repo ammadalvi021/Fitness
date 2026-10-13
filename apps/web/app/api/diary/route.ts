@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@fitfusion/db';
-import { DiaryEntrySchema, normalizeIdempotencyKey, scaleNutrients, sumNutrients, roundNutrients } from '@fitfusion/core';
-import type { Nutrients } from '@fitfusion/core';
+import { prisma, PrismaRuntime, type Prisma } from '@fitfusion/db';
+import { DiaryEntrySchema, normalizeIdempotencyKey, scaleMicros, scaleNutrients, sumNutrients, roundNutrients } from '@fitfusion/core';
+import type { MicroNutrients, Nutrients } from '@fitfusion/core';
 import { requireUser } from '@/lib/auth';
 import { apiError, apiOk, parseDateOnly, readJson, toDateOnly, zodMessage } from '@/lib/server-api';
 
@@ -75,6 +75,10 @@ export async function POST(req: NextRequest) {
   // The client may declare where numbers came from (manual/recipe/web/scan);
   // anything else falls back to 'manual'.
   let nutrients: Nutrients;
+  // V20: micro snapshot, same scaling contract as macros. foodId path:
+  // scaled from the Food's snapshot. customName path: client already
+  // scaled by servings (exactly like kcal), stored as-is after rounding.
+  let micros: MicroNutrients | null = null;
   const source = input.source ?? 'manual';
   if (input.foodId) {
     const food = await prisma.food.findUnique({ where: { id: input.foodId } });
@@ -82,6 +86,7 @@ export async function POST(req: NextRequest) {
       return apiError('food_not_found', 'Food not found', 404);
     }
     nutrients = roundNutrients(scaleNutrients(foodNutrients(food), 1, input.servings));
+    micros = scaleMicros((food.micros as MicroNutrients | null) ?? null, input.servings);
   } else {
     nutrients = {
       kcal: input.kcal,
@@ -90,6 +95,7 @@ export async function POST(req: NextRequest) {
       fatG: input.fatG ?? 0,
       fiberG: input.fiberG ?? 0,
     };
+    micros = scaleMicros(input.micros ?? null, 1);
   }
 
   const date = parseDateOnly(input.date);
@@ -110,6 +116,13 @@ export async function POST(req: NextRequest) {
       carbsG: nutrients.carbsG,
       fatG: nutrients.fatG,
       fiberG: nutrients.fiberG,
+      // V20: Prisma 5 typed client takes Prisma.DbNull (not plain null)
+      // for a nullable Json field, and a JSON round-trip for the object
+      // (zod-inferred optionals lack the InputJsonValue index signature).
+      // Null micros = not tracked (never 0).
+      micros: micros
+        ? (JSON.parse(JSON.stringify(micros)) as Prisma.InputJsonValue)
+        : PrismaRuntime.DbNull,
       source,
       idempotencyKey,
     },

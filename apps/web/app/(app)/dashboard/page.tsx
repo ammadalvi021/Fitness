@@ -19,6 +19,7 @@ import {
   Droplets,
   Dumbbell,
   Flame,
+  Footprints,
   Info,
   Scale,
   Sparkles,
@@ -48,6 +49,8 @@ import {
   Tooltip as LuxTooltip,
 } from "@/components/luxury";
 import { ExerciseIllustration, hasExerciseIllustration } from "@/components/ExerciseIllustration";
+import { StreakWidget } from "@/components/StreakWidget";
+import { ExpenditureCard } from "@/components/ExpenditureCard";
 import { useSession } from "@/components/session";
 
 /* ---------- defensive response shapes (API owned by other agents) -------- */
@@ -145,6 +148,13 @@ export default function DashboardPage() {
   const [workoutPlans, setWorkoutPlans] = useState<WorkoutPlansResponse | null>(null);
   const [workoutPlansStatus, setWorkoutPlansStatus] = useState<SectionStatus>("loading");
   const [waterBusy, setWaterBusy] = useState(false);
+  // V20 Feature 6 — today's synced step count (Google Fit). Rendered only
+  // when a steps measurement exists for today; otherwise nothing.
+  const [stepsToday, setStepsToday] = useState<number | null>(null);
+  const [stepsStatus, setStepsStatus] = useState<SectionStatus>("loading");
+  // V20: user-set calorie target override from the "real burn" card.
+  // undefined = not touched this session (use the session profile value).
+  const [overrideKcal, setOverrideKcal] = useState<number | null | undefined>(undefined);
 
   const loadDiary = useCallback(async () => {
     setDiaryStatus("loading");
@@ -194,15 +204,50 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const loadSteps = useCallback(async () => {
+    setStepsStatus("loading");
+    try {
+      const res = await api<{ measurements?: Array<{ value?: number; recordedAt?: string }> }>(
+        `/api/measurements?type=steps&limit=1`,
+      );
+      const m = res.measurements?.[0];
+      const recorded = m?.recordedAt ? new Date(m.recordedAt) : null;
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      if (m && recorded && recorded >= start && typeof m.value === "number") {
+        setStepsToday(m.value);
+        setStepsStatus("ok");
+      } else {
+        setStepsToday(null);
+        setStepsStatus("empty");
+      }
+    } catch {
+      setStepsToday(null);
+      setStepsStatus("error");
+    }
+  }, []);
+
   useEffect(() => {
     void loadDiary();
     void loadWater();
     void loadProgress();
     void loadWorkoutPlans();
-  }, [loadDiary, loadWater, loadProgress, loadWorkoutPlans]);
+    void loadSteps();
+  }, [loadDiary, loadWater, loadProgress, loadWorkoutPlans, loadSteps]);
 
   /* ---- targets derived from the profile via @fitfusion/core ------------- */
-  const targets = useMemo(() => profileTargets(profile), [profile]);
+  // V20: the "real burn" card can set/clear a calorie target override; merge
+  // it into the profile snapshot used for target computation.
+  const targets = useMemo(() => {
+    const sessionOverride = profile.calorieTargetOverrideKcal;
+    return profileTargets({
+      ...profile,
+      calorieTargetOverrideKcal:
+        overrideKcal === undefined
+          ? (typeof sessionOverride === "number" ? sessionOverride : null)
+          : overrideKcal,
+    });
+  }, [profile, overrideKcal]);
 
   /* ---- diary totals (only meaningful when diary loaded) ------------------ */
   const consumed = useMemo(() => {
@@ -452,6 +497,7 @@ export default function DashboardPage() {
           >
             {nextAction.label}
           </LuxButton>
+          <StreakWidget className="w-full sm:w-72" />
         </div>
       </header>
 
@@ -617,6 +663,14 @@ export default function DashboardPage() {
         </GlassPanel>
       </div>
 
+      {/* ------------------- adaptive TDEE (V20) -------------------------- */}
+      <div className="mt-4">
+        <ExpenditureCard
+          staticTdeeKcal={targets.tdee}
+          onApplyTarget={(kcal) => setOverrideKcal(kcal)}
+        />
+      </div>
+
       {/* ---------------------- coordinated metrics ----------------------- */}
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
         <MetricCard
@@ -687,6 +741,15 @@ export default function DashboardPage() {
           }
           icon={<Dumbbell size={18} aria-hidden="true" />}
         />
+        {/* V20 Feature 6 — rendered only when today's steps exist. */}
+        {stepsStatus === "ok" && stepsToday != null && (
+          <MetricCard
+            label="Steps today"
+            value={<span className="t-numeral">{Math.round(stepsToday).toLocaleString()}</span>}
+            subtext="Imported from Google Fit"
+            icon={<Footprints size={18} aria-hidden="true" />}
+          />
+        )}
       </div>
 
       {/* ----------------- workout + weight trend ------------------------- */}

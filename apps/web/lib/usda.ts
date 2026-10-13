@@ -6,6 +6,13 @@
  *
  * Docs: https://api.nal.usda.gov/fdc/v1 (OpenAPI)
  */
+import {
+  MICRO_KEYS,
+  MICRO_STANDARD_UNITS,
+  type MicroKey,
+  type MicroNutrients,
+  type MicroUnit,
+} from '@fitfusion/core';
 
 const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1';
 const TIMEOUT_MS = 15_000;
@@ -22,6 +29,12 @@ export interface UsdaFood {
   carbsG: number | null;
   fatG: number | null;
   fiberG: number | null;
+  /**
+   * V20: micronutrients parsed from the record's foodNutrients, in each
+   * key's standard unit. null = the record reported no usable micro data
+   * (never 0, never guessed). Shares the same serving basis as kcal.
+   */
+  micros: MicroNutrients | null;
   source: 'USDA';
   sourceNote: string;
   verification: 'estimate';
@@ -85,6 +98,67 @@ const isCarb = (n: string) => /carbohydrate/i.test(n);
 const isFat = (n: string) => /total lipid/i.test(n);
 const isFiber = (n: string) => /fiber/i.test(n);
 
+/**
+ * V20 — USDA nutrient-name mapping for micronutrients.
+ *
+ * Exact (lowercased, trimmed) nutrient names per micro key, ordered most
+ * specific first. Exact names — not substrings — so we never double-count
+ * sibling rows (e.g. 'Vitamin D (D2 + D3)' total vs 'Vitamin D2' /
+ * 'Vitamin D3' components, or 'Vitamin A, RAE' vs 'Vitamin A, IU').
+ *
+ * Unit policy: only rows whose unit normalizes to the key's STANDARD unit
+ * are taken. IU rows (vitamin A/E) are skipped — IU→mcg conversion depends
+ * on the vitamer source, so converting would be guessing. Missing rows →
+ * absent key (never 0).
+ */
+const MICRO_NAME_MAP: Record<MicroKey, string[]> = {
+  vitaminA: ['vitamin a, rae'],
+  vitaminC: ['vitamin c, total ascorbic acid', 'vitamin c'],
+  vitaminD: ['vitamin d (d2 + d3)', 'vitamin d'],
+  vitaminE: ['vitamin e (alpha-tocopherol)', 'vitamin e'],
+  vitaminK: ['vitamin k (phylloquinone)', 'vitamin k'],
+  calcium: ['calcium, ca'],
+  iron: ['iron, fe'],
+  magnesium: ['magnesium, mg'],
+  phosphorus: ['phosphorus, p'],
+  potassium: ['potassium, k'],
+  sodium: ['sodium, na'],
+  zinc: ['zinc, zn'],
+};
+
+/** Normalize a USDA unitName to 'mg' | 'mcg' | null (null = unusable). */
+export function normalizeMicroUnit(unitName: string | undefined): MicroUnit | null {
+  if (!unitName) return null;
+  // USDA uses UG and occasionally the Greek mu (μg / ΜG) for microgram.
+  const u = unitName.trim().toUpperCase().replace(/Μ/g, 'U').replace(/μ/g, 'U');
+  if (u === 'MG') return 'mg';
+  if (u === 'UG' || u === 'MCG') return 'mcg';
+  return null; // IU, G, KCAL etc. — never silently convert
+}
+
+/**
+ * Extract the tracked micros from a USDA foodNutrients list.
+ * Exported for tests.
+ */
+export function extractUsdaMicros(nutrients: UsdaNutrient[] | undefined): MicroNutrients | null {
+  if (!nutrients || nutrients.length === 0) return null;
+  const out: MicroNutrients = {};
+  for (const key of MICRO_KEYS) {
+    const names = MICRO_NAME_MAP[key];
+    const wantUnit = MICRO_STANDARD_UNITS[key];
+    const row = nutrients.find((n) => {
+      const name = n?.nutrientName?.trim().toLowerCase();
+      if (!name || !names.includes(name)) return false;
+      return normalizeMicroUnit(n?.unitName) === wantUnit;
+    });
+    const amount = numOrNull(row?.value);
+    if (row && amount !== null && amount >= 0) {
+      out[key] = { amount, unit: wantUnit };
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** Normalize one raw USDA food record. Exported for tests. */
 export function normalizeUsdaFood(raw: UsdaFoodRaw): UsdaFood | null {
   const fdcId = numOrNull(raw.fdcId);
@@ -105,6 +179,7 @@ export function normalizeUsdaFood(raw: UsdaFoodRaw): UsdaFood | null {
     carbsG: pickNutrient(nutrients, isCarb),
     fatG: pickNutrient(nutrients, isFat),
     fiberG: pickNutrient(nutrients, isFiber),
+    micros: extractUsdaMicros(nutrients),
     source: 'USDA',
     sourceNote: 'USDA FoodData Central',
     verification: 'estimate',

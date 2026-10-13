@@ -21,6 +21,7 @@ import {
   MetricCard,
 } from "@/components/luxury";
 import { Trophy } from "lucide-react";
+import { ShareSection } from "@/components/ShareCard";
 import {
   formatShortDate,
   pickArray,
@@ -446,6 +447,13 @@ export default function ProgressPage() {
               )}
             </GlassPanel>
           </div>
+
+          <ShareSection
+            weights={weights}
+            nutritionDays={nutrition.map((n) => ({ date: n.date, kcal: n.kcal }))}
+            workoutDays={workouts.map((w) => w.date)}
+            timeframeLabel={`last ${range} days`}
+          />
 
           <p className="t-meta mt-6">
             Trends are informational and based on what you&apos;ve logged. If you have a

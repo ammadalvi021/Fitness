@@ -137,8 +137,25 @@ export async function computeTargets(
   warnings.push(...target.warnings);
   assumptions.push(...target.assumptions);
 
+  // V20 Feature 1: user-set calorie target override (set from the
+  // adaptive-TDEE dashboard card). Same 1200–6000 bounds as the validator.
+  const overrideRaw = profile?.calorieTargetOverrideKcal;
+  const overrideKcal =
+    typeof overrideRaw === 'number' &&
+    Number.isFinite(overrideRaw) &&
+    overrideRaw >= 1200 &&
+    overrideRaw <= 6000
+      ? Math.round(overrideRaw)
+      : null;
+  if (overrideKcal !== null) {
+    assumptions.push(
+      `Using your manually set daily calorie target of ${overrideKcal.toLocaleString()} kcal/day instead of the calculated target.`,
+    );
+  }
+  const effectiveCalorieTarget = overrideKcal ?? calorieTarget;
+
   const macros = calculateMacros({
-    calories: calorieTarget,
+    calories: effectiveCalorieTarget,
     goal,
     weightKg: weightKg ?? 70,
   });
@@ -149,7 +166,7 @@ export async function computeTargets(
   }
 
   return {
-    calorieTarget,
+    calorieTarget: effectiveCalorieTarget,
     tdee,
     macros,
     waterMl,

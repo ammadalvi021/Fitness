@@ -164,14 +164,22 @@ export default function RecipesPage() {
 
   return (
     <div className="anim-page-enter mx-auto max-w-5xl space-y-6 p-4 pb-24">
-      <div className="mb-2">
-        <h1 className="t-page-title flex items-center gap-3">
-          <ChefHat size={26} aria-hidden="true" style={{ color: 'var(--accent)' }} />
-          Recipes
-        </h1>
-        <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Find something good to cook
-        </p>
+      <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="t-page-title flex items-center gap-3">
+            <ChefHat size={26} aria-hidden="true" style={{ color: 'var(--accent)' }} />
+            Recipes
+          </h1>
+          <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Find something good to cook
+          </p>
+        </div>
+        <Link
+          href="/recipes/import"
+          className="anim-press inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-[var(--border)] px-4 text-sm text-[var(--text)]"
+        >
+          Import from URL
+        </Link>
       </div>
 
       {/* ------- filters ------- */}

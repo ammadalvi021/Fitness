@@ -12,6 +12,7 @@ import { apiError, apiOk } from '@/lib/server-api';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { isUsdaConfigured, searchUsdaFoods, type UsdaFood } from '@/lib/usda';
 import { searchProducts, type NormalizedProduct } from '@/lib/openfoodfacts';
+import type { MicroNutrients } from '@fitfusion/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,13 @@ export interface WebFoodResult {
   carbsG: number | null;
   fatG: number | null;
   fiberG: number | null;
+  /**
+   * V20: micros from USDA records (same serving basis as the other
+   * nutrients). null = this result reports no micro data — the diary
+   * renders "not tracked", never 0. Open Food Facts results always null
+   * (OFF has no reliable per-micro fields).
+   */
+  micros: MicroNutrients | null;
   source: 'USDA' | 'Open Food Facts';
   sourceNote: string;
   verification: 'estimate';
@@ -44,6 +52,7 @@ function fromUsda(f: UsdaFood): WebFoodResult {
     carbsG: f.carbsG,
     fatG: f.fatG,
     fiberG: f.fiberG,
+    micros: f.micros,
     source: 'USDA',
     sourceNote: f.sourceNote,
     verification: 'estimate',
@@ -68,6 +77,7 @@ function fromOff(p: NormalizedProduct): WebFoodResult | null {
     carbsG: n.carbsG,
     fatG: n.fatG,
     fiberG: n.fiberG,
+    micros: null, // Open Food Facts: no reliable per-micro fields — not tracked, never guessed
     source: 'Open Food Facts',
     sourceNote: `Open Food Facts (crowdsourced${perServing ? '' : '; per-100g values'})`,
     verification: 'estimate',

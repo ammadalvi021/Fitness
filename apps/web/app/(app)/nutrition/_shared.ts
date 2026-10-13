@@ -16,6 +16,7 @@ import type {
   ActivityLevel,
   Goal,
   MealType,
+  MicroNutrients,
   Nutrients,
   SafetyFlags,
   Sex,
@@ -99,6 +100,8 @@ export interface DiaryEntry {
   carbsG: number;
   fatG: number;
   fiberG: number;
+  /** V20: micro snapshot at log time (absent key = not tracked). */
+  micros?: MicroNutrients | null;
   source?: string;
 }
 

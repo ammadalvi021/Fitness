@@ -39,6 +39,7 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next-fitv20/types/**/*.ts"
   ]
 }

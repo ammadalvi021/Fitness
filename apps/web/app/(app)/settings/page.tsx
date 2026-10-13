@@ -74,6 +74,85 @@ export default function SettingsPage() {
   const [ramadanMode, setRamadanMode] = useState(false);
   const [ramadanSaving, setRamadanSaving] = useState(false);
 
+  // V20 Feature 6 — Google Fit sync state
+  interface FitStatus {
+    connected: boolean;
+    configured: boolean;
+    provider?: string;
+    lastSyncAt?: string | null;
+    lastSyncError?: string | null;
+    stepsToday?: number | null;
+  }
+  const [fit, setFit] = useState<FitStatus | null>(null);
+  const [fitBusy, setFitBusy] = useState(false);
+
+  async function loadFitStatus() {
+    try {
+      const data = await api<FitStatus>("/api/health/google/status");
+      setFit(data);
+    } catch {
+      setFit({ connected: false, configured: false });
+    }
+  }
+
+  async function syncFitNow() {
+    setFitBusy(true);
+    setError(null);
+    try {
+      const data = await api<{ imported: { stepDays: number; stepsUpserted: number; weightKg: number | null; weightImported: boolean }; empty: boolean }>("/api/health/google/sync", { method: "POST" });
+      setNotice(
+        data.empty
+          ? "Synced with Google Fit — no new steps or weight found in your Google data."
+          : `Synced with Google Fit — ${data.imported.stepsUpserted} day(s) of steps updated${data.imported.weightImported ? `, weight ${data.imported.weightKg} kg imported` : ""}.`,
+      );
+      await loadFitStatus();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Sync failed. Please try again.");
+    } finally {
+      setFitBusy(false);
+    }
+  }
+
+  async function disconnectFit() {
+    setFitBusy(true);
+    setError(null);
+    try {
+      await api("/api/health/google/disconnect", { method: "DELETE" });
+      setNotice("Google Fit disconnected. Your imported measurements stay in your records.");
+      await loadFitStatus();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't disconnect. Please try again.");
+    } finally {
+      setFitBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadFitStatus();
+    // OAuth callback lands here with ?fit=connected|error — surface it once.
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get("fit");
+    if (flag === "connected") {
+      setNotice("Google Fit connected. Tap “Sync now” to import your steps and weight.");
+    } else if (flag === "error") {
+      const reason = params.get("reason");
+      setError(
+        reason === "denied"
+          ? "You declined the Google permission — Google Fit was not connected."
+          : reason === "not_configured"
+            ? "Google Fit sync is not configured on this server."
+            : "Google Fit connection failed. Please try again.",
+      );
+    }
+    if (flag) {
+      params.delete("fit");
+      params.delete("reason");
+      const clean = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+      window.history.replaceState(null, "", clean);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function setRamadanModePref(on: boolean) {
     setRamadanSaving(true);
     setError(null);
@@ -436,6 +515,60 @@ export default function SettingsPage() {
               aria-label="Ramadan mode"
             />
           </label>
+        </div>
+      </GlassPanel>
+
+      {/* Health sync (V20 Feature 6) — Google Fit */}
+      <GlassPanel className="mt-4 p-6">
+        <h2 className="t-card-heading">Health sync</h2>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
+          Import daily steps and body weight from Google Fit into your existing records. Never invented — if Google returns nothing, nothing is imported.
+        </p>
+        <div className="mt-4">
+          {fit === null ? (
+            <Skeleton className="h-16 w-full" />
+          ) : fit.connected ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <span className="text-[var(--text)]">
+                  <span className="font-medium">Google Fit</span> · connected
+                </span>
+                <span className="text-[var(--text-secondary)]">
+                  Last sync: {fit.lastSyncAt ? new Date(fit.lastSyncAt).toLocaleString() : "never"}
+                </span>
+                {typeof fit.stepsToday === "number" && (
+                  <span className="text-[var(--text-secondary)]">
+                    Steps today: <span className="font-medium text-[var(--text)]">{fit.stepsToday.toLocaleString()}</span>
+                  </span>
+                )}
+              </div>
+              {fit.lastSyncError && (
+                <p className="text-sm" style={{ color: "var(--error)" }}>{fit.lastSyncError}</p>
+              )}
+              <div className="flex flex-wrap gap-3">
+                <LuxButton type="button" onClick={() => void syncFitNow()} disabled={fitBusy}>
+                  {fitBusy ? "Syncing…" : "Sync now"}
+                </LuxButton>
+                <Button type="button" variant="ghost" onClick={() => void disconnectFit()} disabled={fitBusy}>
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          ) : fit.configured ? (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--text-secondary)]">Not connected.</p>
+              <LuxButton type="button" onClick={() => { window.location.href = "/api/health/google/connect"; }}>
+                Connect Google Fit
+              </LuxButton>
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Google Fit sync isn’t configured on this server yet — see <span className="font-medium">docs/health-sync.md</span> for setup.
+            </p>
+          )}
+          <p className="mt-4 text-xs text-[var(--text-secondary)]">
+            Apple Health isn’t available in this web app — it needs a native iOS app. That’s a future item, not something this page can do.
+          </p>
         </div>
       </GlassPanel>
 

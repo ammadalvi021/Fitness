@@ -699,3 +699,158 @@ export async function coachReply(
     return { status: "error", error: aiUserMessage(err, "Coach reply failed") };
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Recipe URL import — AI parse of a page's readable text               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * NEVER-FABRICATE RULE (import path): the model is instructed to return
+ * {"found": false} when the page text holds no recipe. That maps to the
+ * `no_recipe` error — we NEVER invent ingredients, quantities, or steps.
+ */
+
+export interface ImportedRecipeIngredient {
+  name: string;
+  /** Numeric amount as stated on the page (e.g. 2 for "2 cups"); null when the page gives none. */
+  quantity: number | null;
+  /** Unit as stated on the page (e.g. "cups", "tbsp", "g"); null when none. */
+  unit: string | null;
+}
+
+export interface ImportedRecipe {
+  title: string;
+  ingredients: ImportedRecipeIngredient[];
+  servings: number;
+  instructions: string[];
+  sourceUrl: string;
+}
+
+export type RecipeImportParseErrorCode = "no_recipe" | "parse_failed";
+
+export interface RecipeImportParseOk {
+  status: "ok";
+  recipe: ImportedRecipe;
+}
+export interface RecipeImportParseError {
+  status: "error";
+  code: RecipeImportParseErrorCode;
+  error: string;
+}
+export interface RecipeImportParseNotConfigured {
+  status: "not_configured";
+  error: string;
+}
+export type RecipeImportParseResult =
+  | RecipeImportParseOk
+  | RecipeImportParseError
+  | RecipeImportParseNotConfigured;
+
+const ImportedRecipeIngredientSchema = z.object({
+  name: z.string().min(1).max(200),
+  quantity: z.number().nonnegative().nullable().optional(),
+  unit: z.string().max(40).nullable().optional(),
+});
+
+const ImportedRecipeSchema = z.object({
+  title: z.string().min(1).max(200),
+  ingredients: z.array(ImportedRecipeIngredientSchema).min(1).max(100),
+  servings: z.number().int().min(1).max(100),
+  instructions: z.array(z.string().min(1).max(2000)).max(50).default([]),
+});
+
+/** Exported so the web route can re-validate parse results (incl. mocked ones). */
+export const RecipeImportResponseSchema = z.union([
+  z.object({ found: z.literal(true) }).merge(ImportedRecipeSchema),
+  z.object({ found: z.literal(false) }),
+]);
+
+const RECIPE_IMPORT_SYSTEM_PROMPT = `You extract a recipe from a web page's readable text. Return STRICT JSON only — no prose, no markdown fences.
+Shapes:
+- Recipe found: {"found": true, "title": string, "ingredients": [{"name": string, "quantity": number|null, "unit": string|null}], "servings": integer (1-100), "instructions": string[]}
+- No recipe on the page: {"found": false}
+RULES:
+- NEVER invent ingredients, quantities, units, servings, or steps. Copy ONLY what the page states.
+- quantity is the numeric amount as stated (2 for "2 cups"); unit is the unit word as stated ("cups", "tbsp", "g", "cloves"). If the page gives no amount, use null for both.
+- servings is the recipe's stated yield in servings; if the page doesn't state one, use 4.
+- ingredients: each real ingredient once, in page order, max 40. Skip nutrition tables, ads, and related-recipe links.
+- instructions: the page's method steps, in order, one string per step, max 30 steps.
+- If the text holds no recipe at all (blog post, product page, homepage), return {"found": false}.`;
+
+const RECIPE_IMPORT_TEXT_BUDGET = 12000;
+
+/**
+ * Ask the AI provider to parse a recipe out of a page's readable text.
+ * Server-side only (reads AI_API_KEY). Never fabricates: a page with no
+ * recipe yields {status:'error', code:'no_recipe'}.
+ */
+export async function parseRecipePageAI(
+  text: string,
+  pageUrl: string
+): Promise<RecipeImportParseResult> {
+  const cfg = readAIConfig();
+  if (!cfg.apiKey || !cfg.chatModel) {
+    return { status: "not_configured", error: "AI provider is not configured" };
+  }
+  const excerpt = text.slice(0, RECIPE_IMPORT_TEXT_BUDGET);
+  try {
+    const raw = await chatCompletion(cfg, {
+      model: cfg.chatModel,
+      messages: [
+        { role: "system", content: RECIPE_IMPORT_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: `Page URL: ${pageUrl.slice(0, 500)}\n\nPage text:\n${excerpt}\n\nSTRICT JSON only.`,
+        },
+      ],
+      maxTokens: 2000,
+      temperature: 0.1,
+    });
+    let parsed: unknown;
+    try {
+      parsed = extractJsonObject(raw);
+    } catch {
+      return {
+        status: "error",
+        code: "parse_failed",
+        error: "Could not parse the AI response as JSON",
+      };
+    }
+    const validated = RecipeImportResponseSchema.safeParse(parsed);
+    if (!validated.success) {
+      return {
+        status: "error",
+        code: "parse_failed",
+        error: "AI response failed validation",
+      };
+    }
+    if (!validated.data.found) {
+      return {
+        status: "error",
+        code: "no_recipe",
+        error: "No recipe found in the page text",
+      };
+    }
+    const d = validated.data;
+    return {
+      status: "ok",
+      recipe: {
+        title: d.title,
+        ingredients: d.ingredients.map((i) => ({
+          name: i.name,
+          quantity: i.quantity ?? null,
+          unit: i.unit ?? null,
+        })),
+        servings: d.servings,
+        instructions: d.instructions,
+        sourceUrl: pageUrl,
+      },
+    };
+  } catch (err) {
+    return {
+      status: "error",
+      code: "parse_failed",
+      error: aiUserMessage(err, "Recipe import failed"),
+    };
+  }
+}
