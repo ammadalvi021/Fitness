@@ -51,6 +51,7 @@ import {
 import { ExerciseIllustration, hasExerciseIllustration } from "@/components/ExerciseIllustration";
 import { StreakWidget } from "@/components/StreakWidget";
 import { ExpenditureCard } from "@/components/ExpenditureCard";
+import { DailyWeighIn } from "@/components/DailyWeighIn";
 import { useSession } from "@/components/session";
 
 /* ---------- defensive response shapes (API owned by other agents) -------- */
@@ -475,6 +476,7 @@ export default function DashboardPage() {
 
   return (
     <div className="anim-page-enter">
+      <DailyWeighIn unitSystem={typeof profile.unitSystem === "string" ? profile.unitSystem : "metric"} />
       {/* ------------------------- welcome header ------------------------- */}
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
