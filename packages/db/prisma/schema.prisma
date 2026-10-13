@@ -363,6 +363,9 @@ model Recipe {
   userId            String?
   isPrivate         Boolean  @default(false)
   yieldGrams        Float?
+  // V21: recipe library expansion
+  mealType          String?
+  needsReview       Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Recipe browsing.
- * - Public curated browsing with filters (unchanged): q, cuisine, diet, tag,
- *   maxKcal, page, limit. Private user recipes are excluded here.
+ * - Public curated browsing with filters: q, cuisine, diet, tag, mealType,
+ *   difficulty, minKcal/maxKcal, minProtein/maxProtein, maxTime (prep+cook),
+ *   excludeAllergen (comma-separated), sort, page, limit.
+ *   Private user recipes are excluded here.
  * - `mine=1` (authenticated): lists the caller's private custom recipes.
  */
 export async function GET(req: NextRequest) {
@@ -31,31 +33,67 @@ export async function GET(req: NextRequest) {
   const cuisine = (sp.get('cuisine') ?? '').trim();
   const diet = (sp.get('diet') ?? '').trim().toLowerCase();
   const tag = (sp.get('tag') ?? '').trim().toLowerCase();
+  const mealType = (sp.get('mealType') ?? '').trim().toLowerCase();
+  const difficulty = (sp.get('difficulty') ?? '').trim().toLowerCase();
+  const minKcal = sp.get('minKcal') ? Number(sp.get('minKcal')) : undefined;
   const maxKcal = sp.get('maxKcal') ? Number(sp.get('maxKcal')) : undefined;
+  const minProtein = sp.get('minProtein') ? Number(sp.get('minProtein')) : undefined;
+  const maxProtein = sp.get('maxProtein') ? Number(sp.get('maxProtein')) : undefined;
+  const maxTime = sp.get('maxTime') ? Number(sp.get('maxTime')) : undefined;
+  const excludeAllergen = (sp.get('excludeAllergen') ?? '')
+    .split(',').map((a) => a.trim().toLowerCase()).filter(Boolean);
+  const sort = (sp.get('sort') ?? 'name').trim().toLowerCase();
   const limit = clampInt(sp.get('limit'), 20, 1, 100);
   const page = clampInt(sp.get('page'), 1, 1, 1000);
 
   if (diet && diet !== 'vegetarian' && diet !== 'non_vegetarian') {
     return apiError('validation_error', 'diet must be vegetarian or non_vegetarian', 400);
   }
+  if (difficulty && !['easy', 'medium', 'hard'].includes(difficulty)) {
+    return apiError('validation_error', 'difficulty must be easy, medium or hard', 400);
+  }
+  const SORTS = ['name', 'time', 'kcal', 'protein'] as const;
+  if (!SORTS.includes(sort as (typeof SORTS)[number])) {
+    return apiError('validation_error', `sort must be one of ${SORTS.join(', ')}`, 400);
+  }
 
-  const and: object[] = [];
+  const and: Prisma.RecipeWhereInput[] = [];
   if (q) and.push({ title: { contains: q, mode: 'insensitive' } });
   if (diet) and.push({ dietCategory: diet });
+  if (mealType) and.push({ mealType: { equals: mealType, mode: 'insensitive' } });
+  if (difficulty) and.push({ difficulty: { equals: difficulty, mode: 'insensitive' } });
+  if (minKcal !== undefined && Number.isFinite(minKcal)) and.push({ kcalPerServing: { gte: minKcal } });
   if (maxKcal !== undefined && Number.isFinite(maxKcal)) and.push({ kcalPerServing: { lte: maxKcal } });
+  if (minProtein !== undefined && Number.isFinite(minProtein)) and.push({ proteinPerServing: { gte: minProtein } });
+  if (maxProtein !== undefined && Number.isFinite(maxProtein)) and.push({ proteinPerServing: { lte: maxProtein } });
   if (cuisine) and.push({ cuisine: { name: { equals: cuisine, mode: 'insensitive' } } });
   // Private user recipes never leak into public browsing.
   and.push({ isPrivate: false });
 
+  const orderBy: Prisma.RecipeOrderByWithRelationInput =
+    sort === 'kcal' ? { kcalPerServing: 'asc' }
+    : sort === 'protein' ? { proteinPerServing: 'desc' }
+    : sort === 'time' ? { cookMin: 'asc' }
+    : { title: 'asc' };
+
   const all = await prisma.recipe.findMany({
     where: and.length ? { AND: and } : undefined,
     include: { cuisine: { select: { id: true, name: true } } },
-    orderBy: { title: 'asc' },
+    orderBy,
     take: 500,
   });
-  const filtered = tag
-    ? all.filter((r) => r.tags.some((t) => t.toLowerCase().includes(tag)))
-    : all;
+
+  // In-memory filters (arrays / computed): tag, allergen exclusion, max total time.
+  let filtered = all;
+  if (tag) filtered = filtered.filter((r) => r.tags.some((t) => t.toLowerCase().includes(tag)));
+  if (excludeAllergen.length) {
+    filtered = filtered.filter(
+      (r) => !r.allergens.some((a) => excludeAllergen.includes(a.toLowerCase())),
+    );
+  }
+  if (maxTime !== undefined && Number.isFinite(maxTime)) {
+    filtered = filtered.filter((r) => r.prepMin + r.cookMin <= maxTime);
+  }
   const total = filtered.length;
   const recipes = filtered.slice((page - 1) * limit, page * limit);
 

@@ -38,6 +38,10 @@ import {
   V18_FOODS,
   type V18FoodSeed,
 } from './seed-v18-data.js';
+import { PAKISTANI_RECIPES } from './seed-recipes-pakistani.js';
+import { INDIAN_MET_RECIPES } from './seed-recipes-indian-met.js';
+import { ASIAN_RECIPES } from './seed-recipes-asian.js';
+import { WESTERN_RECIPES } from './seed-recipes-western.js';
 
 const prisma = new PrismaClient();
 
@@ -2027,6 +2031,50 @@ async function main() {
       create: { slug: r.slug, ...data },
     });
   }
+
+  // V21: batch recipe modules (engine-computed nutrition, pure data).
+  // New recipes are source='curated', verified=false (engine-calculated,
+  // not yet human-reviewed). needsReview is always false here — every
+  // batch recipe resolved cleanly against the ingredient catalogue.
+  const V21_BATCHES = [PAKISTANI_RECIPES, INDIAN_MET_RECIPES, ASIAN_RECIPES, WESTERN_RECIPES];
+  let v21Count = 0;
+  for (const batch of V21_BATCHES) {
+    for (const r of batch) {
+      const cuisineId = cuisineIds.get(r.cuisine);
+      if (!cuisineId) throw new Error(`Unknown cuisine referenced by recipe ${r.slug}: ${r.cuisine}`);
+      const data = {
+        title: r.title,
+        cuisineId,
+        dietCategory: r.dietCategory,
+        tags: r.tags,
+        servings: r.servings,
+        prepMin: r.prepMin,
+        cookMin: r.cookMin,
+        difficulty: r.difficulty,
+        mealType: r.mealType,
+        needsReview: r.needsReview,
+        ingredients: r.ingredients.map((i: { name: string; quantity: string; grams: number }) => ({
+          name: i.name, quantity: i.quantity, grams: i.grams,
+        })),
+        instructions: r.instructions.map((text: string, idx: number) => ({ step: idx + 1, text })),
+        kcalPerServing: r1(r.computed.perServing.kcal),
+        proteinPerServing: r1(r.computed.perServing.proteinG),
+        carbsPerServing: r1(r.computed.perServing.carbsG),
+        fatPerServing: r1(r.computed.perServing.fatG),
+        fiberPerServing: r1(r.computed.perServing.fiberG),
+        source: 'curated',
+        verified: false,
+        allergens: r.allergens,
+      };
+      await prisma.recipe.upsert({
+        where: { slug: r.slug },
+        update: data,
+        create: { slug: r.slug, ...data },
+      });
+      v21Count++;
+    }
+  }
+  console.log(`Seeded ${v21Count} v21 batch recipes`);
 
   for (const e of EXERCISES) {
     const data = {

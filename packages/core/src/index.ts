@@ -18,4 +18,5 @@ export * from './idempotency.js';
 export * from './fasting.js';
 export * from './validation.js';
 export * from './food-catalog.js';
+export * from './recipe-engine.js';
 export * from './micronutrients.js';
