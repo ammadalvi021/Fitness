@@ -17,7 +17,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run check:prisma-syntax",
+    "check:prisma-syntax": "node prisma/check-syntax.mjs"
   },
   "types": "./dist/index.d.ts",
   "version": "0.1.0"

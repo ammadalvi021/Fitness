@@ -44,7 +44,7 @@ export interface RecipeSeed {
   prepMin: number;
   cookMin: number;
   difficulty: 'easy' | 'medium' | 'hard';
-  ingredients: { name: string; quantity: string; grams: number }[];
+  ingredients: { name: string; quantity: string; grams?: number }[];
   instructions: string[];
   allergens: string[];
   /**

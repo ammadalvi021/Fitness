@@ -2000,7 +2000,8 @@ const FOODS: FoodSeed[] = [
   { name: 'Peanuts (roasted)', servingSize: 30, servingUnit: 'g', kcal: 170, proteinG: 8, carbsG: 5, fatG: 14, fiberG: 2.5 },
   { name: 'Peanut Butter', servingSize: 32, servingUnit: 'g (2 tbsp)', kcal: 190, proteinG: 8, carbsG: 7, fatG: 16, fiberG: 2.5 },
   { name: 'Olive Oil', servingSize: 14, servingUnit: 'g (1 tbsp)', servingWeightG: 14, kcal: 120, proteinG: 0, carbsG: 0, fatG: 14, fiberG: 0 },
-  { name: 'Whole Milk', servingSize: 250, servingUnit: 'ml (1 cup)', servingWeightG: 257.5, // 250 ml x 1.03 g/ml (USDA whole-milk density) kcal: 150, proteinG: 8, carbsG: 12, fatG: 8, fiberG: 0 },
+  // 250 ml x 1.03 g/ml (USDA whole-milk density)
+  { name: 'Whole Milk', servingSize: 250, servingUnit: 'ml (1 cup)', servingWeightG: 257.5, kcal: 150, proteinG: 8, carbsG: 12, fatG: 8, fiberG: 0 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -2076,8 +2077,8 @@ async function main() {
         difficulty: r.difficulty,
         mealType: r.mealType,
         needsReview: r.needsReview,
-        ingredients: r.ingredients.map((i: { name: string; quantity: string; grams: number }) => ({
-          name: i.name, quantity: i.quantity, grams: i.grams,
+        ingredients: r.ingredients.map((i: { name: string; quantity: string; grams?: number }) => ({
+          name: i.name, quantity: i.quantity, grams: i.grams ?? null,
         })),
         instructions: r.instructions.map((text: string, idx: number) => ({ step: idx + 1, text })),
         kcalPerServing: r1(r.computed.perServing.kcal),
