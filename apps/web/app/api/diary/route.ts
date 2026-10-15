@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, PrismaRuntime, type Prisma } from '@fitfusion/db';
-import { DiaryEntrySchema, normalizeIdempotencyKey, scaleMicros, scaleNutrients, sumNutrients, roundNutrients } from '@fitfusion/core';
+import { DiaryEntrySchema, normalizeIdempotencyKey, requiresAcknowledgement, scaleMicros, scaleNutrients, sumNutrients, roundNutrients } from '@fitfusion/core';
 import type { MicroNutrients, Nutrients } from '@fitfusion/core';
 import { requireUser } from '@/lib/auth';
+import { canViewRecipe } from '@/lib/recipe-access';
+import { clampServings, nutritionForServings, perServingFromRecipe } from '@/lib/recipe-servings';
 import { apiError, apiOk, parseDateOnly, readJson, toDateOnly, zodMessage } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
@@ -67,20 +69,56 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!input.foodId && !input.customName) {
-    return apiError('validation_error', 'Either foodId or customName is required', 400);
+  if (!input.foodId && !input.customName && !input.recipeId) {
+    return apiError('validation_error', 'foodId, customName or recipeId is required', 400);
   }
 
-  // Never trust client totals: recompute from the Food when a foodId is given.
-  // The client may declare where numbers came from (manual/recipe/web/scan);
-  // anything else falls back to 'manual'.
+  // Never trust client totals: recompute from the Food when a foodId is
+  // given, and from the stored Recipe when a recipeId is given. The client
+  // may declare where numbers came from (manual/recipe/web/scan); anything
+  // else falls back to 'manual'.
   let nutrients: Nutrients;
   // V20: micro snapshot, same scaling contract as macros. foodId path:
-  // scaled from the Food's snapshot. customName path: client already
-  // scaled by servings (exactly like kcal), stored as-is after rounding.
+  // scaled from the Food's snapshot. customName/recipe paths: client
+  // already scaled by servings (exactly like kcal), stored as-is after
+  // rounding (recipes carry no micros, so there is nothing to recompute).
   let micros: MicroNutrients | null = null;
-  const source = input.source ?? 'manual';
-  if (input.foodId) {
+  let source = input.source ?? 'manual';
+  let servings = input.servings;
+  let customName = input.customName ?? null;
+  // V21.4: recipe FK persisted at log time; durable partial-nutrition
+  // indicator (null = complete values — never presented as partial).
+  let recipeId: string | null = null;
+  let nutritionPartial: boolean | null = null;
+  if (input.recipeId) {
+    // V21.4: recipe-linked logging. The recipe is resolved server-side; its
+    // visibility/ownership rules are enforced via the shared canViewRecipe
+    // (a private recipe of another user is rejected as not-found, leaking
+    // no existence). Servings and nutrition are RECALCULATED from the
+    // stored per-serving values via the authoritative serving contract —
+    // client-supplied totals are never trusted on this path.
+    const recipe = await prisma.recipe.findUnique({ where: { id: input.recipeId } });
+    if (!recipe || !canViewRecipe(recipe, { id: s.user.id })) {
+      return apiError('recipe_not_found', 'Recipe not found', 404);
+    }
+    // V21.4: incomplete nutrition must be explicitly acknowledged at the
+    // API level — a direct POST can no longer log partial totals silently.
+    const partial = requiresAcknowledgement(recipe.needsReview);
+    if (partial && input.nutritionAck !== true) {
+      return apiError(
+        'nutrition_ack_required',
+        "This recipe's nutrition is incomplete (partial totals). Acknowledge explicitly with nutritionAck: true to log it anyway.",
+        400,
+      );
+    }
+    servings = clampServings(input.servings);
+    nutrients = nutritionForServings(perServingFromRecipe(recipe), servings);
+    recipeId = recipe.id;
+    if (!customName) customName = recipe.title;
+    source = 'recipe';
+    nutritionPartial = partial ? true : null;
+    micros = scaleMicros(input.micros ?? null, 1);
+  } else if (input.foodId) {
     const food = await prisma.food.findUnique({ where: { id: input.foodId } });
     if (!food) {
       return apiError('food_not_found', 'Food not found', 404);
@@ -109,8 +147,8 @@ export async function POST(req: NextRequest) {
       date,
       mealType: input.mealType,
       foodId: input.foodId ?? null,
-      customName: input.customName ?? null,
-      servings: input.servings,
+      customName,
+      servings,
       kcal: nutrients.kcal,
       proteinG: nutrients.proteinG,
       carbsG: nutrients.carbsG,
@@ -124,6 +162,10 @@ export async function POST(req: NextRequest) {
         ? (JSON.parse(JSON.stringify(micros)) as Prisma.InputJsonValue)
         : PrismaRuntime.DbNull,
       source,
+      recipeId,
+      // V21.4: durable partial-nutrition marker; the returned entry carries
+      // it so partial totals are never presented as complete.
+      nutritionPartial,
       idempotencyKey,
     },
   });

@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { FastingRecordSchema } from './fasting.js';
 import { MicrosSchema } from './micronutrients.js';
+import { isKnownZeroIngredient } from './custom-ingredients.js';
 
 const SexEnum = z.enum(['male', 'female', 'other', 'prefer_not_to_say']);
 const ActivityLevelEnum = z.enum([
@@ -118,6 +119,13 @@ export const DiaryEntrySchema = z.object({
   mealType: MealTypeEnum,
   foodId: z.string().min(1).optional(),
   customName: z.string().min(1).max(200).optional(),
+  /**
+   * V21.4: link to a stored Recipe. When present the server resolves the
+   * recipe, enforces its visibility/ownership rules, and RECALCULATES
+   * servings/nutrition from the stored per-serving values — client-supplied
+   * totals are ignored on this path.
+   */
+  recipeId: z.string().min(1).max(64).optional(),
   servings: z.number().positive('Servings must be positive'),
   kcal: z.number().min(0),
   proteinG: z.number().min(0).optional(),
@@ -133,6 +141,13 @@ export const DiaryEntrySchema = z.object({
    */
   micros: MicrosSchema,
   idempotencyKey: z.string().min(1).max(100).optional(),
+  /**
+   * V21.4: explicit server-side acknowledgement that the logged nutrition is
+   * partial. REQUIRED (must be `true`) when the resolved recipe's nutrition
+   * is incomplete (needsReview); the diary API rejects un-acknowledged
+   * partial logs. Ignored for manual/foodId entries and complete recipes.
+   */
+  nutritionAck: z.boolean().optional(),
   source: DiarySourceEnum.optional(),
 });
 export type DiaryEntryInput = z.infer<typeof DiaryEntrySchema>;
@@ -184,19 +199,52 @@ export type CoachMessageInput = z.infer<typeof CoachMessageSchema>;
 /**
  * One ingredient row. Explicit nutrient values are PER 100 g of the
  * ingredient; when `foodId` points at a catalogue food the server derives
- * per-100-g values from that food's serving. Rows with only a name (e.g.
- * "salt", "water") contribute 0 — the server never invents nutrition.
+ * per-100-g values from that food's serving (via canonical servingWeightG,
+ * see packages/core/src/serving-weight.ts).
+ *
+ * P4 (v21.2): rows WITHOUT a trusted foodId —
+ *  - if the name is on the explicit KNOWN_ZERO_INGREDIENTS list (water,
+ *    salt, plain spices — packages/core/src/custom-ingredients.ts), the row
+ *    contributes 0;
+ *  - otherwise declared nutrients require ALL FIVE values + a `basis`
+ *    ('usda' | 'label' | 'estimate' — documented, never invented);
+ *  - a name+grams-only row is accepted but classified "nutrition unknown":
+ *    it contributes 0, is flagged, and forces needsReview=true on the
+ *    recipe ("nutrition incomplete"). The server never invents nutrition.
  */
-export const CustomRecipeIngredientSchema = z.object({
-  foodId: z.string().min(1).optional(),
-  name: z.string().min(1).max(200),
-  grams: z.number().positive('grams must be positive').max(10000),
-  kcal: z.number().min(0).max(9000).optional(),
-  proteinG: z.number().min(0).max(100).optional(),
-  carbsG: z.number().min(0).max(100).optional(),
-  fatG: z.number().min(0).max(100).optional(),
-  fiberG: z.number().min(0).max(100).optional(),
-});
+export const CustomRecipeIngredientSchema = z
+  .object({
+    foodId: z.string().min(1).optional(),
+    name: z.string().min(1).max(200),
+    grams: z.number().positive('grams must be positive').max(10000),
+    kcal: z.number().min(0).max(9000).optional(),
+    proteinG: z.number().min(0).max(100).optional(),
+    carbsG: z.number().min(0).max(100).optional(),
+    fatG: z.number().min(0).max(100).optional(),
+    fiberG: z.number().min(0).max(100).optional(),
+    /** Required when any nutrient is declared without a foodId. */
+    basis: z.enum(['usda', 'label', 'estimate']).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.foodId) return; // trusted catalogue food — server resolves
+    if (isKnownZeroIngredient(v.name)) return; // explicit zero list
+    const keys = ['kcal', 'proteinG', 'carbsG', 'fatG', 'fiberG'] as const;
+    const declared = keys.filter((k) => v[k] !== undefined);
+    if (declared.length === 0) return; // "nutrition unknown" — flagged downstream, not rejected
+    if (declared.length < keys.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Ingredient "${v.name}": declare all five nutrients (kcal, proteinG, carbsG, fatG, fiberG) or none — partial declarations are rejected.`,
+      });
+      return;
+    }
+    if (!v.basis) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Ingredient "${v.name}": declared nutrients require a basis ('usda' | 'label' | 'estimate').`,
+      });
+    }
+  });
 export type CustomRecipeIngredientInput = z.infer<
   typeof CustomRecipeIngredientSchema
 >;
@@ -210,7 +258,15 @@ export const CustomRecipeSchema = z.object({
   yieldGrams: z.number().positive().max(50000).optional(),
   portions: z.number().int().min(1).max(100),
   instructions: z.array(z.string().min(1).max(2000)).max(50).optional(),
-  dietCategory: z.enum(['vegetarian', 'non_vegetarian']).optional(),
+  // V21.4 (P6): dietCategory is REQUIRED at creation — never defaulted.
+  // The server previously defaulted an omitted field to 'vegetarian',
+  // which mislabeled meat recipes. Omitting it is now a validation error;
+  // the UI forces an explicit choice. PATCH keeps it optional
+  // (CustomRecipeSchema.partial()) — an absent field means "leave as-is".
+  dietCategory: z.enum(['vegetarian', 'non_vegetarian'], {
+    required_error: 'dietCategory is required: choose vegetarian or non_vegetarian',
+    invalid_type_error: 'dietCategory must be vegetarian or non_vegetarian',
+  }),
   prepMin: z.number().int().min(0).max(1440).optional(),
   cookMin: z.number().int().min(0).max(1440).optional(),
   difficulty: z.enum(['easy', 'medium', 'hard']).optional(),

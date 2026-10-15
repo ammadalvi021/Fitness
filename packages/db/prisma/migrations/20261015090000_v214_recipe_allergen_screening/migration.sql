@@ -1,0 +1,21 @@
+-- v21.4: recipe allergen-screening status (additive only — one new column
+-- with a default, no DROPs, no column changes, no backfill).
+--
+-- allergenScreened (BOOLEAN, NOT NULL, default false):
+--   true  = the recipe's `allergens` list was produced by ingredient-name
+--           screening (custom-recipe creation endpoint, v21.4+, or any flow
+--           that records the screening explicitly). The list is still
+--           name-derived screening — NEVER a certified allergen analysis —
+--           so the ALLERGEN_CAVEAT (packages/core/src/recipe-claims.ts) must
+--           still be shown wherever the list appears.
+--   false = screening was never recorded (all pre-v21.4 rows, including the
+--           270 seed recipes and any older custom recipes). An empty
+--           `allergens` list on an unscreened recipe MUST NOT be rendered as
+--           "no allergens" — the UI says screening was not performed.
+--
+-- No backfill by design: the 270 seed recipes' lists are "declared from
+-- ingredient names" at generation time (policy doc), but no per-row
+-- screening record exists, so claiming screened=true would be inventing
+-- evidence. Rows stay false until a real screening is recorded.
+
+ALTER TABLE "Recipe" ADD COLUMN "allergenScreened" BOOLEAN NOT NULL DEFAULT false;

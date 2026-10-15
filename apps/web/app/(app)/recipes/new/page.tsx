@@ -15,7 +15,13 @@ import { api, ApiError } from "@/lib/api";
 import { Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { GlassPanel, LuxButton } from "@/components/luxury";
 import { VerificationBadge } from "@/components/VerificationBadge";
-import { computeRecipeNutrition } from "@fitfusion/core";
+import { IncompleteNutritionAck } from "@/components/incomplete-nutrition-ack";
+import {
+  classifyCustomIngredient,
+  computeRecipeNutrition,
+  partialTotalsSummary,
+  per100gFactor,
+} from "@fitfusion/core";
 import { todayLocal } from "@/components/food-log";
 
 interface IngredientRow {
@@ -30,16 +36,23 @@ interface IngredientRow {
   fatG: number;
   fiberG: number;
   fromCatalogue: boolean;
+  /** true when the row carries declared (user/quick-add) per-100-g values */
+  declared: boolean;
+  /** V21.2: catalogue food whose serving weight is unknown — factor unknown */
+  servingIncomplete?: boolean;
 }
 
 interface FoodHit {
   id: string;
   name: string;
   servingSize: number;
+  servingUnit: string;
+  /** Canonical grams per serving (null = unknown — never guess). */
+  servingWeightG: number | null;
   perServing: { kcal: number; proteinG: number; carbsG: number; fatG: number; fiberG: number };
 }
 
-/** Standard quick-add staples (per-100-g, generic values). */
+/** Standard quick-add staples (per-100-g, generic values, basis: estimate). */
 const QUICK_ADD: { label: string; name: string; per100: [number, number, number, number, number] }[] = [
   { label: "Oil", name: "Cooking Oil", per100: [884, 0, 0, 100, 0] },
   { label: "Ghee", name: "Desi Ghee", per100: [900, 0, 0, 100, 0] },
@@ -57,6 +70,7 @@ function newRow(): IngredientRow {
     grams: "",
     kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, fiberG: 0,
     fromCatalogue: false,
+    declared: false,
   };
 }
 
@@ -67,12 +81,21 @@ export default function NewRecipePage() {
   const [portions, setPortions] = useState("4");
   const [yieldGrams, setYieldGrams] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [dietCategory, setDietCategory] = useState<"vegetarian" | "non_vegetarian">("vegetarian");
+  // V21.4: diet is a REQUIRED explicit choice — the server rejects an
+  // omitted/unknown dietCategory (no 'vegetarian' defaulting). The Select
+  // starts unselected; Save stays disabled until the user picks one.
+  const [dietCategory, setDietCategory] = useState<"" | "vegetarian" | "non_vegetarian">("");
   const [saving, setSaving] = useState(false);
   const [logging, setLogging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [savedTitle, setSavedTitle] = useState("");
+  // V21.3: incomplete-nutrition protection. Saving an incomplete recipe as a
+  // private draft is allowed, but the review flag must be unmissable at save
+  // time; logging a portion needs an explicit acknowledgement.
+  const [saveAckOpen, setSaveAckOpen] = useState(false);
+  const [logAckOpen, setLogAckOpen] = useState(false);
+  const [savedIncomplete, setSavedIncomplete] = useState(false);
 
   // Autocomplete state per row.
   const [searchFor, setSearchFor] = useState<string | null>(null);
@@ -99,6 +122,7 @@ export default function NewRecipePage() {
         fatG: q.per100[3],
         fiberG: q.per100[4],
         fromCatalogue: false,
+        declared: true, // quick-add values are user-declared (basis: estimate)
       },
     ]);
   }
@@ -124,22 +148,62 @@ export default function NewRecipePage() {
   }
 
   function pickFood(rowKey: string, hit: FoodHit) {
-    const factor = hit.servingSize > 0 ? 100 / hit.servingSize : 0;
+    // V21.2 (P1): the per-100-g factor comes from the canonical serving
+    // weight — never `100 / servingSize`. A null factor means the serving
+    // weight is unknown: flag the row "nutrition incomplete", don't guess.
+    const { factor } = per100gFactor({
+      name: hit.name,
+      servingSize: hit.servingSize,
+      servingUnit: hit.servingUnit,
+      servingWeightG: hit.servingWeightG,
+    });
+    const f = factor ?? 0;
     updateRow(rowKey, {
       foodId: hit.id,
       name: hit.name,
-      kcal: Math.round(hit.perServing.kcal * factor * 10) / 10,
-      proteinG: Math.round(hit.perServing.proteinG * factor * 10) / 10,
-      carbsG: Math.round(hit.perServing.carbsG * factor * 10) / 10,
-      fatG: Math.round(hit.perServing.fatG * factor * 10) / 10,
-      fiberG: Math.round(hit.perServing.fiberG * factor * 10) / 10,
+      kcal: Math.round(hit.perServing.kcal * f * 10) / 10,
+      proteinG: Math.round(hit.perServing.proteinG * f * 10) / 10,
+      carbsG: Math.round(hit.perServing.carbsG * f * 10) / 10,
+      fatG: Math.round(hit.perServing.fatG * f * 10) / 10,
+      fiberG: Math.round(hit.perServing.fiberG * f * 10) / 10,
       fromCatalogue: true,
+      declared: false,
+      servingIncomplete: factor == null,
     });
     setSearchFor(null);
     setHits([]);
   }
 
   const portionCount = Math.max(1, Math.floor(Number(portions) || 1));
+
+  /**
+   * V21.2 (P1/P4): client-side mirror of the server's classification so the
+   * user sees "nutrition incomplete" before saving. A row is incomplete when
+   * its catalogue serving weight is unknown, or (without a foodId and not a
+   * known-zero item) when it carries no declared nutrient values.
+   */
+  const incompleteRows = useMemo(() => {
+    return rows
+      .filter((r) => r.name.trim() && Number(r.grams) > 0)
+      .filter((r) => {
+        if (r.servingIncomplete) return true;
+        if (r.foodId) return false;
+        const { status } = classifyCustomIngredient(r.name.trim(), {
+          ...(r.declared
+            ? {
+                kcal: r.kcal,
+                proteinG: r.proteinG,
+                carbsG: r.carbsG,
+                fatG: r.fatG,
+                fiberG: r.fiberG,
+                basis: 'estimate' as const,
+              }
+            : {}),
+        });
+        return status === 'unknown';
+      })
+      .map((r) => r.name.trim());
+  }, [rows]);
 
   const preview = useMemo(() => {
     const ingredients = rows
@@ -160,16 +224,28 @@ export default function NewRecipePage() {
   function buildPayload() {
     const ingredients = rows
       .filter((r) => r.name.trim() && Number(r.grams) > 0)
-      .map((r) => ({
-        ...(r.foodId ? { foodId: r.foodId } : {}),
-        name: r.name.trim(),
-        grams: Number(r.grams),
-        kcal: r.kcal,
-        proteinG: r.proteinG,
-        carbsG: r.carbsG,
-        fatG: r.fatG,
-        fiberG: r.fiberG,
-      }));
+      .map((r) => {
+        // V21.2 (P4): catalogue rows are server-trusted via foodId;
+        // quick-add rows carry declared values with basis 'estimate';
+        // name-only manual rows send NO nutrients — the server classifies
+        // them "nutrition unknown" instead of silently zeroing them.
+        if (r.foodId) {
+          return { foodId: r.foodId, name: r.name.trim(), grams: Number(r.grams) };
+        }
+        if (r.declared) {
+          return {
+            name: r.name.trim(),
+            grams: Number(r.grams),
+            kcal: r.kcal,
+            proteinG: r.proteinG,
+            carbsG: r.carbsG,
+            fatG: r.fatG,
+            fiberG: r.fiberG,
+            basis: 'estimate' as const,
+          };
+        }
+        return { name: r.name.trim(), grams: Number(r.grams) };
+      });
     const yg = Number(yieldGrams);
     return {
       name: name.trim(),
@@ -179,25 +255,47 @@ export default function NewRecipePage() {
       ...(instructions.trim()
         ? { instructions: instructions.split("\n").map((s) => s.trim()).filter(Boolean) }
         : {}),
-      dietCategory,
+      // V21.4: dietCategory is a required explicit choice (see canSave);
+      // the server rejects an omitted/unknown value.
+      dietCategory: dietCategory === "" ? undefined : dietCategory,
     };
   }
 
-  async function save() {
+  const [savedWarnings, setSavedWarnings] = useState<string[]>([]);
+
+  async function performSave() {
     setError(null);
     setSaving(true);
     try {
-      const res = await api<{ recipe: { id: string; title: string } }>("/api/recipes", {
+      const res = await api<{
+        recipe: { id: string; title: string };
+        nutritionWarnings?: string[];
+        nutritionIncomplete?: boolean;
+      }>("/api/recipes", {
         method: "POST",
         body: buildPayload(),
       });
       setSavedId(res.recipe.id);
       setSavedTitle(res.recipe.title);
+      // V21.3: the server is authoritative on incomplete nutrition.
+      setSavedIncomplete(res.nutritionIncomplete === true);
+      // V21.2: surface the server's nutrition warnings (unknown ingredients
+      // / un-convertible servings) — the recipe is flagged "nutrition
+      // incomplete" and needs review.
+      setSavedWarnings(Array.isArray(res.nutritionWarnings) ? res.nutritionWarnings : []);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Couldn't save your recipe.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleSaveClick() {
+    // V21.3: saving an incomplete recipe as a private draft is allowed (no
+    // work destroyed), but the "flagged for review" status must be
+    // unmissable at save time — confirm before the POST.
+    if (incompleteRows.length > 0) setSaveAckOpen(true);
+    else void performSave();
   }
 
   async function logPortion() {
@@ -231,9 +329,19 @@ export default function NewRecipePage() {
     }
   }
 
+  function handleLogPortion() {
+    // V21.3: the just-saved recipe's per-portion totals may be partial —
+    // require an explicit acknowledgement before they flow into the diary.
+    // The server's nutritionIncomplete is authoritative; the client-side
+    // incompleteRows mirror covers the pre-save preview path.
+    if (savedIncomplete || incompleteRows.length > 0) setLogAckOpen(true);
+    else void logPortion();
+  }
+
   const canSave =
     name.trim().length > 0 &&
     rows.some((r) => r.name.trim() && Number(r.grams) > 0) &&
+    dietCategory !== "" && // V21.4: diet is a required explicit choice
     !saving;
 
   return (
@@ -339,7 +447,7 @@ export default function NewRecipePage() {
                               >
                                 <span className="truncate">{h.name}</span>
                                 <span className="shrink-0 text-xs text-[var(--text-secondary)]">
-                                  {Math.round(h.perServing.kcal)} kcal / {h.servingSize}g
+                                  {Math.round(h.perServing.kcal)} kcal / {h.servingUnit}
                                 </span>
                               </button>
                             </li>
@@ -378,6 +486,17 @@ export default function NewRecipePage() {
                     ) : (
                       <>grams of the ingredient as used</>
                     )}
+                    {incompleteRows.includes(r.name.trim()) && r.name.trim() && (
+                      <span
+                        className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                        style={{
+                          backgroundColor: 'color-mix(in srgb, var(--warning, #b45309) 15%, transparent)',
+                          color: 'var(--warning, #b45309)',
+                        }}
+                      >
+                        nutrition incomplete
+                      </span>
+                    )}
                   </span>
                 </div>
               </li>
@@ -409,12 +528,15 @@ export default function NewRecipePage() {
               placeholder="e.g. 800"
             />
           </Field>
-          <Field label="Diet" htmlFor="nr-diet">
+          <Field label="Diet" htmlFor="nr-diet" required hint="Required — choose the diet this recipe fits.">
             <Select
               id="nr-diet"
               value={dietCategory}
               onChange={(e) => setDietCategory(e.target.value as "vegetarian" | "non_vegetarian")}
             >
+              <option value="" disabled>
+                Choose diet…
+              </option>
               <option value="vegetarian">Vegetarian</option>
               <option value="non_vegetarian">Non-vegetarian</option>
             </Select>
@@ -470,11 +592,29 @@ export default function NewRecipePage() {
               Add at least one ingredient with grams to see the nutrition preview.
             </p>
           )}
+          {incompleteRows.length > 0 && (
+            <div
+              role="status"
+              className="mt-3 rounded-xl border p-3 text-sm"
+              style={{
+                borderColor: 'color-mix(in srgb, var(--warning, #b45309) 45%, transparent)',
+                backgroundColor: 'color-mix(in srgb, var(--warning, #b45309) 10%, transparent)',
+                color: 'var(--text)',
+              }}
+            >
+              <strong>Nutrition incomplete.</strong>{' '}
+              {incompleteRows.length === 1
+                ? `"${incompleteRows[0]}" has unknown nutrition`
+                : `${incompleteRows.length} ingredients have unknown nutrition (${incompleteRows.join(', ')})`}{' '}
+              — it contributes 0 to the totals. Link a catalogue food or add
+              declared nutrient values to complete it.
+            </div>
+          )}
         </div>
 
         {/* ------------------------------ Actions ------------------------------ */}
         {!savedId ? (
-          <LuxButton onClick={save} disabled={!canSave} className="w-full">
+          <LuxButton onClick={handleSaveClick} disabled={!canSave} className="w-full">
             {saving ? "Saving…" : "Save recipe (private)"}
           </LuxButton>
         ) : (
@@ -489,8 +629,33 @@ export default function NewRecipePage() {
               <Check size={18} aria-hidden="true" style={{ color: "var(--success)" }} />
               Saved “{savedTitle}” privately ✓
             </p>
+            {/* V21.3: the review flag must be unmissable after save. */}
+            {(savedWarnings.length > 0 || savedIncomplete) && (
+              <div
+                role="status"
+                className="mt-3 rounded-xl border p-3 text-sm"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--warning, #b45309) 45%, transparent)',
+                  backgroundColor: 'color-mix(in srgb, var(--warning, #b45309) 10%, transparent)',
+                  color: 'var(--text)',
+                }}
+              >
+                <strong>Nutrition incomplete — flagged &quot;Awaiting review&quot;.</strong>{' '}
+                The saved totals are {partialTotalsSummary(incompleteRows)}.
+                <ul className="mt-1 list-disc pl-5">
+                  {savedWarnings.slice(0, 5).map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+                {savedWarnings.length > 5 && (
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                    +{savedWarnings.length - 5} more
+                  </p>
+                )}
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-2">
-              <LuxButton onClick={logPortion} disabled={logging || !preview}>
+              <LuxButton onClick={handleLogPortion} disabled={logging || !preview}>
                 {logging ? "Logging…" : "Log a portion to diary"}
               </LuxButton>
               <Link href="/log/my-meals">
@@ -510,6 +675,34 @@ export default function NewRecipePage() {
           <ArrowLeft size={16} aria-hidden="true" /> Back to recipes
         </Link>
       </GlassPanel>
+
+      {/* V21.3: save-time acknowledgement — an incomplete recipe may be
+          saved as a private draft, but the review flag must be unmissable.
+          A bare dismiss never saves. */}
+      <IncompleteNutritionAck
+        open={saveAckOpen}
+        unresolvedNames={incompleteRows}
+        onConfirm={() => {
+          setSaveAckOpen(false);
+          void performSave();
+        }}
+        onCancel={() => setSaveAckOpen(false)}
+        confirmLabel="Save as private draft"
+        cancelLabel="Go back"
+        note="It will be flagged “Awaiting review” until the nutrition is completed — link a catalogue food or add declared nutrient values to fix it."
+      />
+
+      {/* V21.3: log-portion acknowledgement — partial per-portion totals
+          need an explicit acknowledgement before flowing into the diary. */}
+      <IncompleteNutritionAck
+        open={logAckOpen}
+        unresolvedNames={incompleteRows}
+        onConfirm={() => {
+          setLogAckOpen(false);
+          void logPortion();
+        }}
+        onCancel={() => setLogAckOpen(false)}
+      />
     </div>
   );
 }

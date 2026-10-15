@@ -42,6 +42,8 @@ import { PAKISTANI_RECIPES } from './seed-recipes-pakistani.js';
 import { INDIAN_MET_RECIPES } from './seed-recipes-indian-met.js';
 import { ASIAN_RECIPES } from './seed-recipes-asian.js';
 import { WESTERN_RECIPES } from './seed-recipes-western.js';
+// V21.2: alias persistence helpers (pure — no DB I/O at import time).
+import { buildRecipeAliasRows } from '../src/alias-normalize.js';
 
 const prisma = new PrismaClient();
 
@@ -92,6 +94,17 @@ type RecipeSeed = {
   fatG: number;
   fiberG: number;
   allergens: string[];
+  /**
+   * v21.2 P8 claims policy: 'halal-friendly' tag requires a recorded human
+   * review — pork-absence alone never grants it. No original recipe has one.
+   */
+  halalReview?: { reviewer: string; reviewedAt: string };
+  /**
+   * v21.2 P8: how `allergens` was produced. Absent =
+   * 'declared-from-ingredient-names' (name-based screening, not a certified
+   * analysis). None of the original recipes has a human-reviewed list.
+   */
+  allergenBasis?: 'declared-from-ingredient-names' | 'human-reviewed';
 };
 
 const RECIPES: RecipeSeed[] = [
@@ -100,7 +113,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Light Chicken Karahi',
     cuisine: 'Pakistani',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'dairy-free'],
+    tags: ['high-protein', 'dairy-free'],
     servings: 4, prepMin: 15, cookMin: 25, difficulty: 'medium',
     ingredients: [
       { name: 'Chicken breast, cubed', quantity: '600 g', grams: 600 },
@@ -150,7 +163,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Chicken Tikka (Oven-Grilled)',
     cuisine: 'Pakistani',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'gluten-free', 'dairy-free'],
+    tags: ['high-protein', 'gluten-free', 'dairy-free'],
     servings: 4, prepMin: 15, cookMin: 20, difficulty: 'medium',
     ingredients: [
       { name: 'Chicken breast, 1-inch cubes', quantity: '700 g', grams: 700 },
@@ -172,7 +185,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Vegetable Biryani',
     cuisine: 'Indian',
     dietCategory: 'vegetarian',
-    tags: ['vegan', 'high-fiber', 'budget-friendly', 'halal'],
+    tags: ['vegan', 'high-fiber', 'budget-friendly'],
     servings: 6, prepMin: 25, cookMin: 40, difficulty: 'medium',
     ingredients: [
       { name: 'Basmati rice, soaked 20 min', quantity: '2 cups', grams: 370 },
@@ -197,7 +210,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Palak Paneer',
     cuisine: 'Indian',
     dietCategory: 'vegetarian',
-    tags: ['high-protein', 'gluten-free', 'halal'],
+    tags: ['high-protein', 'gluten-free'],
     servings: 4, prepMin: 15, cookMin: 20, difficulty: 'medium',
     ingredients: [
       { name: 'Paneer, cubed', quantity: '250 g', grams: 250 },
@@ -244,7 +257,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Chicken Chow Mein',
     cuisine: 'Chinese',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'dairy-free'],
+    tags: ['high-protein', 'dairy-free'],
     servings: 4, prepMin: 15, cookMin: 15, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken breast, thin strips', quantity: '400 g', grams: 400 },
@@ -314,7 +327,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Teriyaki Chicken Rice Bowl',
     cuisine: 'Japanese',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'dairy-free'],
+    tags: ['high-protein', 'dairy-free'],
     servings: 2, prepMin: 10, cookMin: 20, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken thighs, boneless', quantity: '400 g', grams: 400 },
@@ -357,7 +370,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Vegetable Bibimbap',
     cuisine: 'Korean',
     dietCategory: 'vegetarian',
-    tags: ['high-fiber', 'halal'],
+    tags: ['high-fiber'],
     servings: 2, prepMin: 20, cookMin: 20, difficulty: 'medium',
     ingredients: [
       { name: 'Cooked short-grain rice', quantity: '2 cups', grams: 300 },
@@ -403,7 +416,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Thai Green Curry with Chicken',
     cuisine: 'Thai',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'dairy-free', 'gluten-free'],
+    tags: ['high-protein', 'dairy-free', 'gluten-free'],
     servings: 4, prepMin: 15, cookMin: 20, difficulty: 'medium',
     ingredients: [
       { name: 'Chicken breast, sliced', quantity: '500 g', grams: 500 },
@@ -449,7 +462,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Homemade Margherita Pizza',
     cuisine: 'Italian',
     dietCategory: 'vegetarian',
-    tags: ['halal'],
+    tags: [],
     servings: 4, prepMin: 20, cookMin: 12, difficulty: 'medium',
     ingredients: [
       { name: 'Pizza dough', quantity: '500 g', grams: 500 },
@@ -472,7 +485,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Pasta Primavera',
     cuisine: 'Italian',
     dietCategory: 'vegetarian',
-    tags: ['high-fiber', 'halal'],
+    tags: ['high-fiber'],
     servings: 4, prepMin: 15, cookMin: 15, difficulty: 'easy',
     ingredients: [
       { name: 'Penne', quantity: '320 g dry', grams: 320 },
@@ -495,7 +508,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Caprese Grilled Chicken',
     cuisine: 'Italian',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'gluten-free'],
+    tags: ['high-protein', 'gluten-free'],
     servings: 2, prepMin: 10, cookMin: 15, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken breast', quantity: '2 (400 g)', grams: 400 },
@@ -516,7 +529,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Greek Chicken Salad',
     cuisine: 'Mediterranean',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'gluten-free'],
+    tags: ['high-protein', 'gluten-free'],
     servings: 2, prepMin: 15, cookMin: 12, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken breast, grilled and sliced', quantity: '300 g', grams: 300 },
@@ -581,7 +594,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Hummus Grilled Chicken Plate',
     cuisine: 'Middle Eastern',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'gluten-free'],
+    tags: ['high-protein', 'gluten-free'],
     servings: 2, prepMin: 15, cookMin: 15, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken breast', quantity: '2 (350 g)', grams: 350 },
@@ -625,7 +638,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Chicken Shish Kebab',
     cuisine: 'Turkish',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'gluten-free', 'dairy-free'],
+    tags: ['high-protein', 'gluten-free', 'dairy-free'],
     servings: 4, prepMin: 20, cookMin: 15, difficulty: 'medium',
     ingredients: [
       { name: 'Chicken thigh, cubed', quantity: '700 g', grams: 700 },
@@ -691,7 +704,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Grilled Chicken Caesar Salad',
     cuisine: 'American',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein'],
+    tags: ['high-protein'],
     servings: 2, prepMin: 15, cookMin: 12, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken breast', quantity: '2 (350 g)', grams: 350 },
@@ -712,7 +725,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Chicken Fajitas',
     cuisine: 'Mexican',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'dairy-free', 'gluten-free'],
+    tags: ['high-protein', 'dairy-free', 'gluten-free'],
     servings: 4, prepMin: 15, cookMin: 15, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken breast, strips', quantity: '600 g', grams: 600 },
@@ -754,7 +767,7 @@ const RECIPES: RecipeSeed[] = [
     title: 'Herb-Baked Chicken with Vegetables',
     cuisine: 'Continental',
     dietCategory: 'non_vegetarian',
-    tags: ['halal', 'high-protein', 'gluten-free', 'dairy-free'],
+    tags: ['high-protein', 'gluten-free', 'dairy-free'],
     servings: 4, prepMin: 15, cookMin: 35, difficulty: 'easy',
     ingredients: [
       { name: 'Chicken breast', quantity: '4 (700 g)', grams: 700 },
@@ -1931,6 +1944,8 @@ type FoodSeed = {
   brand?: string;
   servingSize: number;
   servingUnit: string;
+  /** Canonical grams per serving (v21.2). Documented basis, never guessed. */
+  servingWeightG?: number;
   kcal: number;
   proteinG: number;
   carbsG: number;
@@ -1940,18 +1955,18 @@ type FoodSeed = {
 
 const FOODS: FoodSeed[] = [
   // South Asian staples
-  { name: 'Chapati (Whole Wheat Roti)', servingSize: 1, servingUnit: 'piece (30g)', kcal: 90, proteinG: 3, carbsG: 18, fatG: 1, fiberG: 3 },
+  { name: 'Chapati (Whole Wheat Roti)', servingSize: 1, servingUnit: 'piece (30g)', servingWeightG: 30, kcal: 90, proteinG: 3, carbsG: 18, fatG: 1, fiberG: 3 },
   { name: 'Basmati Rice (cooked)', servingSize: 150, servingUnit: 'g (1 cup)', kcal: 190, proteinG: 4, carbsG: 42, fatG: 0.5, fiberG: 1 },
   { name: 'Masoor Daal (cooked)', servingSize: 200, servingUnit: 'g (1 cup)', kcal: 230, proteinG: 12, carbsG: 35, fatG: 3, fiberG: 8 },
   { name: 'Chicken Breast (grilled)', servingSize: 100, servingUnit: 'g', kcal: 165, proteinG: 31, carbsG: 0, fatG: 3.5, fiberG: 0 },
   { name: 'Tandoori Chicken', servingSize: 100, servingUnit: 'g', kcal: 150, proteinG: 28, carbsG: 2, fatG: 4, fiberG: 0 },
-  { name: 'Naan', servingSize: 1, servingUnit: 'piece (90g)', kcal: 310, proteinG: 8, carbsG: 56, fatG: 6, fiberG: 2 },
-  { name: 'Paratha (whole wheat)', servingSize: 1, servingUnit: 'piece (60g)', kcal: 200, proteinG: 5, carbsG: 32, fatG: 7, fiberG: 4 },
+  { name: 'Naan', servingSize: 1, servingUnit: 'piece (90g)', servingWeightG: 90, kcal: 310, proteinG: 8, carbsG: 56, fatG: 6, fiberG: 2 },
+  { name: 'Paratha (whole wheat)', servingSize: 1, servingUnit: 'piece (60g)', servingWeightG: 60, kcal: 200, proteinG: 5, carbsG: 32, fatG: 7, fiberG: 4 },
   { name: 'Chana Masala (homemade)', servingSize: 200, servingUnit: 'g (1 cup)', kcal: 260, proteinG: 12, carbsG: 40, fatG: 6, fiberG: 10 },
   { name: 'Dahi - Plain Low-Fat Yogurt', servingSize: 100, servingUnit: 'g', kcal: 60, proteinG: 5, carbsG: 7, fatG: 2, fiberG: 0 },
   { name: 'Paneer', servingSize: 100, servingUnit: 'g', kcal: 265, proteinG: 18, carbsG: 3.5, fatG: 20, fiberG: 0 },
   // Proteins
-  { name: 'Boiled Eggs', servingSize: 2, servingUnit: 'large eggs (100g)', kcal: 140, proteinG: 13, carbsG: 1, fatG: 10, fiberG: 0 },
+  { name: 'Boiled Eggs', servingSize: 2, servingUnit: 'large eggs (100g)', servingWeightG: 100, kcal: 140, proteinG: 13, carbsG: 1, fatG: 10, fiberG: 0 },
   { name: 'Greek Yogurt (plain)', servingSize: 170, servingUnit: 'g', kcal: 100, proteinG: 17, carbsG: 6, fatG: 0.7, fiberG: 0 },
   { name: 'Salmon (baked)', servingSize: 100, servingUnit: 'g', kcal: 208, proteinG: 20, carbsG: 0, fatG: 13, fiberG: 0 },
   { name: 'Tuna (canned in water)', servingSize: 100, servingUnit: 'g', kcal: 132, proteinG: 28, carbsG: 0, fatG: 1, fiberG: 0 },
@@ -1960,7 +1975,7 @@ const FOODS: FoodSeed[] = [
   { name: 'Whey Protein Shake', servingSize: 30, servingUnit: 'g (1 scoop)', kcal: 120, proteinG: 24, carbsG: 3, fatG: 1, fiberG: 0.5 },
   // Grains & carbs
   { name: 'Oatmeal (cooked)', servingSize: 240, servingUnit: 'g (1 cup)', kcal: 165, proteinG: 6, carbsG: 28, fatG: 3.5, fiberG: 4 },
-  { name: 'Whole Wheat Bread', servingSize: 1, servingUnit: 'slice (30g)', kcal: 80, proteinG: 4, carbsG: 15, fatG: 1, fiberG: 2.5 },
+  { name: 'Whole Wheat Bread', servingSize: 1, servingUnit: 'slice (30g)', servingWeightG: 30, kcal: 80, proteinG: 4, carbsG: 15, fatG: 1, fiberG: 2.5 },
   { name: 'Pasta (cooked)', servingSize: 140, servingUnit: 'g (1 cup)', kcal: 220, proteinG: 8, carbsG: 43, fatG: 1.3, fiberG: 2.5 },
   { name: 'Brown Rice (cooked)', servingSize: 150, servingUnit: 'g (1 cup)', kcal: 215, proteinG: 5, carbsG: 45, fatG: 1.8, fiberG: 3.5 },
   { name: 'Quinoa (cooked)', servingSize: 185, servingUnit: 'g (1 cup)', kcal: 222, proteinG: 8, carbsG: 39, fatG: 3.6, fiberG: 5 },
@@ -1970,11 +1985,11 @@ const FOODS: FoodSeed[] = [
   { name: 'Chickpeas (cooked)', servingSize: 164, servingUnit: 'g (1 cup)', kcal: 270, proteinG: 15, carbsG: 45, fatG: 4, fiberG: 12.5 },
   { name: 'Black Beans (cooked)', servingSize: 172, servingUnit: 'g (1 cup)', kcal: 227, proteinG: 15, carbsG: 41, fatG: 1, fiberG: 15 },
   // Fruits
-  { name: 'Banana', servingSize: 1, servingUnit: 'medium (120g)', kcal: 105, proteinG: 1.3, carbsG: 27, fatG: 0.4, fiberG: 3 },
-  { name: 'Apple', servingSize: 1, servingUnit: 'medium (180g)', kcal: 95, proteinG: 0.5, carbsG: 25, fatG: 0.3, fiberG: 4.5 },
+  { name: 'Banana', servingSize: 1, servingUnit: 'medium (120g)', servingWeightG: 120, kcal: 105, proteinG: 1.3, carbsG: 27, fatG: 0.4, fiberG: 3 },
+  { name: 'Apple', servingSize: 1, servingUnit: 'medium (180g)', servingWeightG: 180, kcal: 95, proteinG: 0.5, carbsG: 25, fatG: 0.3, fiberG: 4.5 },
   { name: 'Mango', servingSize: 165, servingUnit: 'g (1 cup)', kcal: 99, proteinG: 1.4, carbsG: 25, fatG: 0.6, fiberG: 2.6 },
-  { name: 'Orange', servingSize: 1, servingUnit: 'medium (140g)', kcal: 62, proteinG: 1.2, carbsG: 15.5, fatG: 0.2, fiberG: 3 },
-  { name: 'Dates (Medjool)', servingSize: 3, servingUnit: 'pieces (72g)', kcal: 200, proteinG: 1.3, carbsG: 54, fatG: 0, fiberG: 5 },
+  { name: 'Orange', servingSize: 1, servingUnit: 'medium (140g)', servingWeightG: 140, kcal: 62, proteinG: 1.2, carbsG: 15.5, fatG: 0.2, fiberG: 3 },
+  { name: 'Dates (Medjool)', servingSize: 3, servingUnit: 'pieces (72g)', servingWeightG: 72, kcal: 200, proteinG: 1.3, carbsG: 54, fatG: 0, fiberG: 5 },
   { name: 'Avocado', servingSize: 75, servingUnit: 'g (1/2)', kcal: 120, proteinG: 1.5, carbsG: 6.4, fatG: 11, fiberG: 5 },
   // Vegetables
   { name: 'Broccoli (steamed)', servingSize: 156, servingUnit: 'g (1 cup)', kcal: 55, proteinG: 3.7, carbsG: 11, fatG: 0.6, fiberG: 5 },
@@ -1984,8 +1999,8 @@ const FOODS: FoodSeed[] = [
   { name: 'Almonds', servingSize: 28, servingUnit: 'g', kcal: 164, proteinG: 6, carbsG: 6, fatG: 14, fiberG: 3.5 },
   { name: 'Peanuts (roasted)', servingSize: 30, servingUnit: 'g', kcal: 170, proteinG: 8, carbsG: 5, fatG: 14, fiberG: 2.5 },
   { name: 'Peanut Butter', servingSize: 32, servingUnit: 'g (2 tbsp)', kcal: 190, proteinG: 8, carbsG: 7, fatG: 16, fiberG: 2.5 },
-  { name: 'Olive Oil', servingSize: 14, servingUnit: 'g (1 tbsp)', kcal: 120, proteinG: 0, carbsG: 0, fatG: 14, fiberG: 0 },
-  { name: 'Whole Milk', servingSize: 250, servingUnit: 'ml (1 cup)', kcal: 150, proteinG: 8, carbsG: 12, fatG: 8, fiberG: 0 },
+  { name: 'Olive Oil', servingSize: 14, servingUnit: 'g (1 tbsp)', servingWeightG: 14, kcal: 120, proteinG: 0, carbsG: 0, fatG: 14, fiberG: 0 },
+  { name: 'Whole Milk', servingSize: 250, servingUnit: 'ml (1 cup)', servingWeightG: 257.5, // 250 ml x 1.03 g/ml (USDA whole-milk density) kcal: 150, proteinG: 8, carbsG: 12, fatG: 8, fiberG: 0 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -2022,7 +2037,12 @@ async function main() {
       fatPerServing: r.fatG,
       fiberPerServing: r.fiberG,
       source: 'curated',
-      verified: true,
+      // V21.2 P8: demoted from the previous true value. These 31 originals
+      // carry hand-written nutrition with NO recorded verification evidence
+      // (see VERIFIED_STANDARD_EVIDENCE in recipe-claims-policy.ts and
+      // docs/recipe-data-quality.md), so the honest flag is false. They are
+      // curated hand-authored estimates — tier 'calculated-estimate'.
+      verified: false,
       allergens: r.allergens,
     };
     await prisma.recipe.upsert({
@@ -2034,10 +2054,13 @@ async function main() {
 
   // V21: batch recipe modules (engine-computed nutrition, pure data).
   // New recipes are source='curated', verified=false (engine-calculated,
-  // not yet human-reviewed). needsReview is always false here — every
-  // batch recipe resolved cleanly against the ingredient catalogue.
+  // not yet human-reviewed). needsReview comes from each batch entry:
+  // true when the engine hit an UNKNOWN quantity/unit (v21.2 policy —
+  // unknown beats guessing), so 92 recipes are honestly flagged
+  // (reconciled 2026-10-14; see packages/db/prisma/recipe-quality-report.ts).
   const V21_BATCHES = [PAKISTANI_RECIPES, INDIAN_MET_RECIPES, ASIAN_RECIPES, WESTERN_RECIPES];
   let v21Count = 0;
+  let v21AliasCount = 0;
   for (const batch of V21_BATCHES) {
     for (const r of batch) {
       const cuisineId = cuisineIds.get(r.cuisine);
@@ -2066,15 +2089,33 @@ async function main() {
         verified: false,
         allergens: r.allergens,
       };
-      await prisma.recipe.upsert({
+      const recipe = await prisma.recipe.upsert({
         where: { slug: r.slug },
         update: data,
         create: { slug: r.slug, ...data },
       });
+      // V21.2: persist seed aliases. Idempotent upsert on the
+      // @@unique([recipeId, normalizedAlias]) key — re-running the seed never
+      // duplicates aliases. Alias strings come ONLY from the batch modules;
+      // nothing is invented here, and identities are never merged across recipes.
+      const aliasRows = buildRecipeAliasRows(recipe.id, r.aliases);
+      for (const row of aliasRows) {
+        await prisma.recipeAlias.upsert({
+          where: {
+            recipeId_normalizedAlias: {
+              recipeId: row.recipeId,
+              normalizedAlias: row.normalizedAlias,
+            },
+          },
+          update: { alias: row.alias, language: row.language },
+          create: row,
+        });
+      }
+      v21AliasCount += aliasRows.length;
       v21Count++;
     }
   }
-  console.log(`Seeded ${v21Count} v21 batch recipes`);
+  console.log(`Seeded ${v21Count} v21 batch recipes (${v21AliasCount} aliases)`);
 
   for (const e of EXERCISES) {
     const data = {
@@ -2110,6 +2151,9 @@ async function main() {
         brand: f.brand ?? null,
         servingSize: f.servingSize,
         servingUnit: f.servingUnit,
+        // V21.2: backfill canonical serving weight; explicit undefined
+        // leaves existing values untouched (never nulls a known weight).
+        ...(f.servingWeightG !== undefined ? { servingWeightG: f.servingWeightG } : {}),
         kcal: f.kcal,
         proteinG: f.proteinG,
         carbsG: f.carbsG,
@@ -2123,6 +2167,7 @@ async function main() {
         brand: f.brand ?? null,
         servingSize: f.servingSize,
         servingUnit: f.servingUnit,
+        servingWeightG: f.servingWeightG ?? null,
         kcal: f.kcal,
         proteinG: f.proteinG,
         carbsG: f.carbsG,

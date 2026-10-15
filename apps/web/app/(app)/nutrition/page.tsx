@@ -1200,6 +1200,12 @@ export default function NutritionDiaryPage() {
                       <li key={e.id} className="flex items-center justify-between gap-2 py-2">
                         <div className="min-w-0">
                           <p className="t-body truncate font-medium">{entryName(e)}</p>
+                          {/* V21.4: entries logged with acknowledged incomplete
+                              nutrition are marked partial — partial totals
+                              are never presented as complete. */}
+                          {e.nutritionPartial ? (
+                            <LuxBadge tone="warning" className="mt-1">Partial nutrition</LuxBadge>
+                          ) : null}
                           <p className="t-meta">
                             {servingText(e)} · <span className="t-numeral">{Math.round(num(e.kcal))}</span> kcal · P{' '}
                             <span className="t-numeral">{round1(num(e.proteinG))}</span>g

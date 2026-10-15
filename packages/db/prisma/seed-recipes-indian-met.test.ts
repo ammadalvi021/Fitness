@@ -93,7 +93,9 @@ describe('honesty: stored nutrition matches the engine', () => {
         expect(r.computed.perServing[k], `${r.slug}.${k}`).toBeCloseTo(fresh.perServing[k], 1);
       }
       expect([...r.computed.unresolved].sort()).toEqual([...fresh.unresolved].sort());
-      expect(r.needsReview).toBe(fresh.unresolved.length > 0);
+      // v21.2: incomplete quantities (ranges, bare fractions, volumes with
+      // no documented density) also flag review — never silently partial.
+      expect(r.needsReview).toBe(fresh.unresolved.length > 0 || fresh.incomplete.length > 0);
     });
   }
 });
@@ -116,7 +118,11 @@ describe('tag / allergen / diet derivation consistency', () => {
       expect(tag('vegan')).toBe(vegan);
       expect(tag('gluten-free')).toBe(!has(GLUTEN_RX));
       expect(tag('dairy-free')).toBe(!has(DAIRY_RX));
-      expect(tag('halal-friendly')).toBe(true);
+      // v21.2 P8: the old "no pork/alcohol ⟹ halal-friendly" inference is
+      // dead. The tag requires a recorded human review; no batch recipe has
+      // one, so the tag must be absent. This fails if the old inference
+      // ever returns.
+      expect(tag('halal-friendly')).toBe(Boolean(r.halalReview));
       expect(r.dietCategory).toBe(has(MEAT_RX) ? 'non_vegetarian' : 'vegetarian');
     });
 

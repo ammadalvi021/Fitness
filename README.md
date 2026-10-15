@@ -84,7 +84,7 @@ npm run db:generate        # prisma generate (engines; retry if network flakes)
 # where it cannot see the root .env and fails from a clean shell with P1012
 # "Environment variable not found: DATABASE_URL" — do not use it directly.)
 npm run db:migrate            # production-safe
-npm run db:seed            # recipes (~30), exercises (~50), starter foods
+npm run db:seed            # recipes (270), exercises (~50), starter foods
 
 # 4. Run the dev server
 npm run dev --workspace apps/web   # http://localhost:3000
@@ -419,6 +419,35 @@ Windows — please report differences).
 - **Secrets:** API keys, session secrets, and OAuth/billing credentials are
   server-side only. Only `NEXT_PUBLIC_*` branding overrides may reach the client.
 
+## Recipe library (v21.2)
+
+- **270 seed recipes across 13 cuisine groups** — 239 engine-computed v21
+  batch recipes (Pakistani 60, Indian 24, Middle Eastern 20, Turkish 15,
+  Chinese/Japanese/Korean/Thai 15 each,
+  Mediterranean/Italian/Mexican/American/Continental 12 each) plus 31
+  hand-authored originals.
+- **Nutrition is computed, not declared:** batch recipes' per-serving values
+  are computed by the recipe engine (`packages/core/src/recipe-engine.ts`)
+  from a 182-ingredient catalogue (173 USDA standard-reference basis, 9
+  standard-estimate). Nothing is hand-adjusted; recompute tests prove the
+  stored numbers match the engine — they do not prove independent accuracy.
+- **Data-quality tiers** (`packages/db/prisma/recipe-claims-policy.ts`,
+  `docs/recipe-data-quality.md`): all 270 are `calculated-estimate`
+  (0 reviewed, 0 verified). 95 carry `needsReview` — unknown/unresolvable
+  quantities contribute 0 to totals, never silently partial. The UI shows a
+  tier badge per recipe ("Calculated estimate" / "Reviewed" / "Verified")
+  plus an "Awaiting review" marker where applicable.
+- **Browsing API:** `GET /api/recipes` is server-paginated (`page`/`pageSize`,
+  max 48; returns `total`/`pageCount`) with server-side filters (cuisine,
+  diet, tags, allergens, kcal/protein ranges, maxTime, difficulty, mealType,
+  sort). `q` matches titles AND persisted recipe aliases
+  (English/Urdu/Roman Urdu); `GET /api/recipes/meta` returns
+  cuisines/tags/mealTypes/difficulties/allergens with counts.
+- **Claims honesty:** no recipe carries a `halal-friendly` tag (the tag now
+  requires a recorded human review); allergen lists are declared from
+  ingredient names and the allergen caveat is shown wherever allergen info
+  appears.
+
 ---
 
 ## Monorepo layout
@@ -440,7 +469,7 @@ fitfusion-ai/
     db/                  # @fitfusion/db — Prisma schema/migrations/seeds
       prisma/schema.prisma
       prisma/migrations/
-      prisma/seed.ts     # recipes (~30) + exercises (~50) + starter foods
+      prisma/seed.ts     # recipes (270) + exercises (~50) + starter foods
       src/index.ts       # prisma singleton + types
     ai/                  # @fitfusion/ai — SERVER ONLY, OpenAI-compatible
       src/index.ts       # aiStatus, analyzeFoodImage, generateMealPlanAI,

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@fitfusion/db';
 import { DiaryEntrySchema, roundNutrients, scaleNutrients } from '@fitfusion/core';
 import { requireUser } from '@/lib/auth';
+import { canViewRecipe } from '@/lib/recipe-access';
+import { nutritionForServings, perServingFromRecipe } from '@/lib/recipe-servings';
 import { apiError, apiOk, parseDateOnly, readJson, zodMessage } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
@@ -10,7 +12,13 @@ async function ownedEntry(userId: string, id: string) {
   return prisma.diaryEntry.findFirst({ where: { id, userId } });
 }
 
-const PatchSchema = DiaryEntrySchema.partial().omit({ idempotencyKey: true });
+// V21.4: recipeId/nutritionAck are log-time fields — a PATCH cannot re-link
+// an entry to a different recipe or retro-ack partial nutrition.
+const PatchSchema = DiaryEntrySchema.partial().omit({
+  idempotencyKey: true,
+  recipeId: true,
+  nutritionAck: true,
+});
 
 export async function PATCH(
   req: NextRequest,
@@ -43,7 +51,21 @@ export async function PATCH(
   const servings = input.servings ?? existing.servings;
   const foodId = input.foodId !== undefined ? input.foodId : existing.foodId;
   if (input.servings !== undefined) data.servings = input.servings;
-  if (input.foodId !== undefined) data.foodId = input.foodId;
+  if (input.foodId !== undefined) {
+    data.foodId = input.foodId;
+    // V21.4: re-linking to a Food drops the recipe linkage (and its partial
+    // marker) — the entry is no longer recipe-computed from this point.
+    if (existing.recipeId) {
+      data.recipeId = null;
+      data.nutritionPartial = null;
+    }
+  }
+  const nutrientFieldsSupplied =
+    input.kcal !== undefined ||
+    input.proteinG !== undefined ||
+    input.carbsG !== undefined ||
+    input.fatG !== undefined ||
+    input.fiberG !== undefined;
   if (foodId) {
     const food = await prisma.food.findUnique({ where: { id: foodId } });
     if (!food) return apiError('food_not_found', 'Food not found', 404);
@@ -55,19 +77,29 @@ export async function PATCH(
       ),
     );
     Object.assign(data, { kcal: n.kcal, proteinG: n.proteinG, carbsG: n.carbsG, fatG: n.fatG, fiberG: n.fiberG });
-  } else if (
-    input.kcal !== undefined ||
-    input.proteinG !== undefined ||
-    input.carbsG !== undefined ||
-    input.fatG !== undefined ||
-    input.fiberG !== undefined
-  ) {
-    // Custom (non-food) entries: accept the provided values.
-    if (input.kcal !== undefined) data.kcal = input.kcal;
-    if (input.proteinG !== undefined) data.proteinG = input.proteinG;
-    if (input.carbsG !== undefined) data.carbsG = input.carbsG;
-    if (input.fatG !== undefined) data.fatG = input.fatG;
-    if (input.fiberG !== undefined) data.fiberG = input.fiberG;
+  } else {
+    // V21.4: entries logged from a recipe keep the server-computed totals —
+    // a servings/totals edit re-derives from the stored recipe (same
+    // authoritative contract as the POST path) rather than trusting client
+    // values. Only when the recipe is gone or no longer viewable does the
+    // edit fall back to the manual-entry behavior.
+    let recomputedFromRecipe = false;
+    if (existing.recipeId && (input.servings !== undefined || nutrientFieldsSupplied)) {
+      const recipe = await prisma.recipe.findUnique({ where: { id: existing.recipeId } });
+      if (recipe && canViewRecipe(recipe, { id: s.user.id })) {
+        const n = nutritionForServings(perServingFromRecipe(recipe), servings);
+        Object.assign(data, { kcal: n.kcal, proteinG: n.proteinG, carbsG: n.carbsG, fatG: n.fatG, fiberG: n.fiberG });
+        recomputedFromRecipe = true;
+      }
+    }
+    if (!recomputedFromRecipe && nutrientFieldsSupplied) {
+      // Custom (non-food) entries: accept the provided values.
+      if (input.kcal !== undefined) data.kcal = input.kcal;
+      if (input.proteinG !== undefined) data.proteinG = input.proteinG;
+      if (input.carbsG !== undefined) data.carbsG = input.carbsG;
+      if (input.fatG !== undefined) data.fatG = input.fatG;
+      if (input.fiberG !== undefined) data.fiberG = input.fiberG;
+    }
   }
 
   const entry = await prisma.diaryEntry.update({ where: { id: existing.id }, data });

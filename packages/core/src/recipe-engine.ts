@@ -1,5 +1,6 @@
 /**
- * Recipe ingredient resolution + nutrition computation engine (v21, Phase 1).
+ * Recipe ingredient resolution + nutrition computation engine (v21, Phase 1;
+ * v21.2 unit/volume correctness rework).
  *
  * Pure functions — no DB, no I/O, no network. The ingredient catalogue lives
  * in `packages/db/prisma/seed-ingredients.ts` and is PASSED IN (dependency
@@ -8,27 +9,43 @@
  * Pipeline: recipe item { name, quantity }
  *   → resolveIngredient(name, ingredients)   (which ingredient is this?)
  *   → parseQuantity(quantity)                (how much?)
- *   → toGrams(amount, unit, ingredient)      (in grams)
+ *   → toGrams(amount, unit, ingredient)      (in grams, or UNKNOWN)
  *   → computeRecipeNutrition(rows, servings) (existing engine in food-catalog.ts)
  *
  * UNIT ASSUMPTIONS (documented, binding):
- *  - tbsp = 15 g, tsp = 5 g (flat — NOT 15 ml × density).
- *  - cup = 240 ml × density (density defaults to 1.0; ingredient.densityMl
- *    overrides, e.g. milk 1.03 → 1 cup milk ≈ 247 g).
- *  - ml is direct (1 ml = 1 g); l = 1000 g; kg = 1000 g; mg = g/1000;
- *    oz = 28.35 g; lb = 453.6 g.
- *  - Countable units use ingredient.pieceGrams when set, else defaults:
+ *  - MASS units convert directly, ingredient-independent:
+ *    g, kg (= 1000 g), mg (= g/1000), oz (= 28.35 g), lb (= 453.6 g).
+ *  - VOLUME units convert via millilitres × ingredient-specific density
+ *    (g/ml): cup = 240 ml, tbsp = 15 ml, tsp = 5 ml, fl oz = 29.5735 ml,
+ *    l = 1000 ml, ml direct. Density priority: ingredient.densityMl
+ *    (catalogue-authoritative) → the documented density table
+ *    (packages/core/src/density.ts — every value carries its basis) →
+ *    UNKNOWN. There is NO 1.0 fallback: 1 ml = 1 g only where documented
+ *    (water). 1 tbsp of oil (≈13.8 g) ≠ 1 tbsp of flour (≈7.8 g).
+ *    Exception: catalogue entries recorded as 0 kcal/100 g (plain spices
+ *    etc., by documented design decision) count volume quantities as 0 g
+ *    with a visible warning — their grams are nutritionally irrelevant,
+ *    so a pinch of turmeric never flags a recipe incomplete.
+ *  - Countable units use ingredient.pieceGrams when set (authoritative);
+ *    otherwise the documented generic defaults below, recorded in
+ *    `warnings` so the assumption is visible:
  *    piece = 100 g, medium = 120 g, large = 180 g, small = 60 g,
  *    clove = 4 g, slice = 25 g, can = 400 g.
- *  - 'to taste' / 'pinch' / 'dash' are NOT zero: salt → 1 g, oils/ghee → 5 g,
- *    everything else → 2 g. (Spice entries are 0-kcal in the catalogue, so
- *    these contribute nothing calorically, but the assumed grams are
- *    reported in `warnings` so callers can see the assumption.)
- *  - Ranges ('2-3 tbsp') resolve to the midpoint, documented in warnings
- *    only when they occur (parseQuantity itself is deterministic).
- *  - Unknown units fall back to 'piece' semantics (documented in warnings).
+ *  - A bare number ("3") means pieces (documented convention). An
+ *    UNRECOGNIZED unit word ("3 blargs") is NOT piece — it is an explicit
+ *    unknown-quantity result with a surfaced warning. No silent fallback.
+ *  - Ranges ("2-3 tbsp") are NOT midpointed — they are explicit
+ *    unknown-quantity results (the midpoint was a guess, and guesses are
+ *    what v21.2 removed).
+ *  - Fractions WITH a unit ("1/2 cup", "1 1/2 cups") parse to the fraction.
+ *    A BARE fraction ("1/2", no unit) is unknown — the old code silently
+ *    called it half a piece.
+ *  - 'to taste' / 'pinch' / 'dash' are a known list, not zero: salt → 1 g,
+ *    oils/ghee → 5 g, everything else → 2 g — always reported in
+ *    `warnings` so the assumption stays visible.
+ *  - No false precision: resolved grams are rounded to 1 decimal place.
  *
- * RESOLUTION RULES:
+ * RESOLUTION RULES: (unchanged from v21 — see below)
  *  1. Case-insensitive exact name match.
  *  2. Case-insensitive exact alias match.
  *  3. Token-subset match (query tokens ⊇ candidate tokens, singularized,
@@ -41,12 +58,17 @@
  *  6. Kitchen conventions (documented, Pakistani kitchen): bare 'coriander' /
  *     'dhania' means fresh leaves (Coriander leaves); bare 'milk' means whole
  *     milk; 'cooking oil' / 'tel' means canola oil.
+ *
+ * COMPLETENESS: `computeRecipe` returns `complete: false` whenever any item
+ * is unresolved OR its quantity could not be interpreted OR its grams are
+ * unknown. A partial calculation is NEVER marked complete.
  */
 
 import {
   computeRecipeNutrition,
   type RecipeIngredientInput,
 } from './food-catalog.js';
+import { lookupDensity, ML_PER_UNIT } from './density.js';
 import type { Nutrients } from './types.js';
 
 /** Structural view of an ingredient — satisfied by IngredientSeed. */
@@ -72,13 +94,26 @@ export interface ResolvedIngredient extends IngredientLike {
 /** Normalized unit token produced by parseQuantity. */
 export type QuantityUnit =
   | 'g' | 'kg' | 'mg' | 'ml' | 'l'
-  | 'cup' | 'tbsp' | 'tsp' | 'oz' | 'lb'
+  | 'cup' | 'tbsp' | 'tsp' | 'fl_oz' | 'oz' | 'lb'
   | 'piece' | 'medium' | 'large' | 'small' | 'clove' | 'slice' | 'can'
   | 'pinch' | 'to_taste' | 'none';
+
+/** Why a quantity could not be interpreted — present only on ParsedQuantity.unknown. */
+export type QuantityUnknownReason =
+  | 'range'
+  | 'unrecognized-unit'
+  | 'unparseable'
+  | 'bare-fraction';
 
 export interface ParsedQuantity {
   amount: number;
   unit: QuantityUnit;
+  /**
+   * Present when the quantity could not be interpreted. The caller must
+   * surface a warning and mark nutrition incomplete — never treat the
+   * amount as grams or pieces.
+   */
+  unknown?: QuantityUnknownReason;
 }
 
 const UNIT_ALIASES: Record<string, QuantityUnit> = {
@@ -90,6 +125,7 @@ const UNIT_ALIASES: Record<string, QuantityUnit> = {
   cup: 'cup', cups: 'cup',
   tbsp: 'tbsp', tbs: 'tbsp', tablespoon: 'tbsp', tablespoons: 'tbsp', tblsp: 'tbsp',
   tsp: 'tsp', teaspoon: 'tsp', teaspoons: 'tsp',
+  'fl oz': 'fl_oz', 'fl-oz': 'fl_oz', floz: 'fl_oz', 'fluid ounce': 'fl_oz', 'fluid ounces': 'fl_oz',
   oz: 'oz', ounce: 'oz', ounces: 'oz',
   lb: 'lb', lbs: 'lb', pound: 'lb', pounds: 'lb',
   piece: 'piece', pieces: 'piece', pc: 'piece', pcs: 'piece', whole: 'piece',
@@ -108,9 +144,16 @@ const TO_TASTE_RE =
 
 /**
  * Parse a free-text quantity into { amount, unit }.
- * Handles '600 g', '2 tbsp', '1 cup', '3' (→ piece), '1 medium',
- * fractions ('1/2 cup', '1 1/2 cups'), ranges ('2-3 tbsp' → midpoint 2.5),
- * and 'to taste' (→ { amount: 1, unit: 'to_taste' }).
+ * Handles '600 g', '2 tbsp', '1 cup', '3' (→ piece, documented convention),
+ * '1 medium', fractions WITH a unit ('1/2 cup', '1 1/2 cups'), and the known
+ * 'to taste' / 'pinch' / 'dash' list.
+ *
+ * Explicitly UNKNOWN (never silently converted):
+ *  - ranges ('2-3 tbsp') → unknown: 'range'
+ *  - bare fractions ('1/2' with no unit) → unknown: 'bare-fraction'
+ *  - unrecognized unit words ('3 blargs') → unknown: 'unrecognized-unit'
+ *  - text with no parseable number ('a handful') → unknown: 'unparseable'
+ *  - empty string → { amount: 0, unit: 'none' } (no unknown — nothing asked)
  */
 export function parseQuantity(quantity: string): ParsedQuantity {
   const raw = (quantity ?? '').trim();
@@ -119,6 +162,12 @@ export function parseQuantity(quantity: string): ParsedQuantity {
 
   // Strip parenthetical notes: "2 tbsp (30 ml)" → "2 tbsp".
   const q = raw.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Range: "2-3 tbsp" → UNKNOWN (v21.2: the midpoint was a guess).
+  const range = q.match(/^\d+(?:[.,]\d+)?\s*[-–]\s*\d+(?:[.,]\d+)?\b/);
+  if (range) {
+    return { amount: 0, unit: 'none', unknown: 'range' };
+  }
 
   let amount: number | null = null;
   let rest = q;
@@ -137,18 +186,6 @@ export function parseQuantity(quantity: string): ParsedQuantity {
       rest = (m[3] ?? '').trim();
     }
   }
-  // Range: "2-3 tbsp" → midpoint.
-  if (amount === null) {
-    m = q.match(/^(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)\b(.*)$/);
-    if (m) {
-      const a = Number(m[1].replace(',', '.'));
-      const b = Number(m[2].replace(',', '.'));
-      if (Number.isFinite(a) && Number.isFinite(b)) {
-        amount = (a + b) / 2;
-        rest = (m[3] ?? '').trim();
-      }
-    }
-  }
   // Plain number: "600 g", "2", "0.5 kg".
   if (amount === null) {
     m = q.match(/^(\d+(?:[.,]\d+)?)\b(.*)$/);
@@ -161,11 +198,27 @@ export function parseQuantity(quantity: string): ParsedQuantity {
     }
   }
   if (amount === null || !Number.isFinite(amount)) {
-    return { amount: 0, unit: 'none' };
+    return { amount: 0, unit: 'none', unknown: 'unparseable' };
   }
 
   const unitWord = rest.toLowerCase().replace(/[.,;:!?]+$/g, '').trim();
-  const unit: QuantityUnit = UNIT_ALIASES[unitWord] ?? 'piece'; // unknown units → piece semantics
+
+  // Bare fraction ("1/2" with no unit): the old code silently called this
+  // half a piece. It is unknown.
+  if (!unitWord && /^\d+\s*\/\s*\d+$/.test(q.replace(/\s+/g, ' '))) {
+    return { amount: 0, unit: 'none', unknown: 'bare-fraction' };
+  }
+
+  // Bare number → pieces (documented convention, kept).
+  if (!unitWord) {
+    return { amount, unit: 'piece' };
+  }
+
+  const unit = UNIT_ALIASES[unitWord];
+  if (!unit) {
+    // Unrecognized unit word: NOT piece. Explicit unknown.
+    return { amount, unit: 'none', unknown: 'unrecognized-unit' };
+  }
   return { amount, unit };
 }
 
@@ -195,30 +248,91 @@ export function tasteGrams(ingredient?: IngredientLike): number {
   return 2;
 }
 
+/** MASS units convert directly, ingredient-independent. */
+const MASS_TO_G: Record<string, number> = {
+  g: 1,
+  kg: 1000,
+  mg: 0.001,
+  oz: 28.35,
+  lb: 453.6,
+};
+
+const VOLUME_UNITS = new Set(['ml', 'l', 'cup', 'tbsp', 'tsp', 'fl_oz']);
+
+export interface GramsResult {
+  /**
+   * Grams, or null when the quantity cannot be converted to grams with the
+   * available information (e.g. a volume of an ingredient with no
+   * documented density). Null is UNKNOWN — the caller marks nutrition
+   * incomplete. Never null-guessed to a number.
+   */
+  grams: number | null;
+  /** Documented assumptions applied (generic defaults, density basis, …). */
+  warnings: string[];
+}
+
 /**
- * Convert (amount, unit) to grams. See module header for the full
- * assumption table. Unknown units fall back to 'piece' semantics.
+ * Convert (amount, unit) to grams. Volume units go through ml ×
+ * ingredient-specific density; unknown density → { grams: null }.
+ * Every assumption is reported in `warnings` so callers can surface it.
  */
 export function toGrams(
   amount: number,
   unit: QuantityUnit,
   ingredient?: IngredientLike,
-): number {
-  if (!Number.isFinite(amount) || amount <= 0) return 0;
+): GramsResult {
+  const warnings: string[] = [];
+  const who = ingredient ? `"${ingredient.name}"` : 'the ingredient';
+  if (!Number.isFinite(amount) || amount <= 0) return { grams: 0, warnings };
+
+  if (unit in MASS_TO_G) {
+    return { grams: amount * MASS_TO_G[unit], warnings };
+  }
+
+  if (VOLUME_UNITS.has(unit)) {
+    const ml = amount * (ML_PER_UNIT[unit] ?? 1);
+    const table = ingredient ? lookupDensity(ingredient.name) : null;
+    const density = ingredient?.densityMl ?? table?.density ?? null;
+    if (density == null) {
+      // v21.2: the catalogue records some items (plain spices etc.) as
+      // 0 kcal/100 g by documented design decision. For those, grams are
+      // nutritionally irrelevant — count 0 g with a visible warning rather
+      // than flagging a whole recipe incomplete over 1/2 tsp of turmeric.
+      // This is NOT a 1.0 fallback: it applies only to proven-zero
+      // catalogue entries, and the assumption is always reported.
+      if (ingredient && ingredient.per100.every((v) => v === 0)) {
+        warnings.push(
+          `"${ingredient.name}": catalogue records 0 kcal/100 g — ` +
+          `${amount} ${unit} is nutritionally irrelevant, counted as 0 g (not estimated).`,
+        );
+        return { grams: 0, warnings };
+      }
+      return {
+        grams: null,
+        warnings: [
+          `${who}: ${amount} ${unit} is a volume measure but no density is documented — grams unknown (marked incomplete, not assumed 1 g/ml).`,
+        ],
+      };
+    }
+    if (table && ingredient?.densityMl == null) {
+      warnings.push(
+        `${who}: ${amount} ${unit} → g via density ${density} g/ml (${table.basis}).`,
+      );
+    }
+    return { grams: ml * density, warnings };
+  }
+
   switch (unit) {
-    case 'g': return amount;
-    case 'kg': return amount * 1000;
-    case 'mg': return amount / 1000;
-    case 'ml': return amount; // direct: 1 ml = 1 g
-    case 'l': return amount * 1000;
-    case 'cup': return amount * 240 * (ingredient?.densityMl ?? 1.0);
-    case 'tbsp': return amount * 15;
-    case 'tsp': return amount * 5;
-    case 'oz': return amount * 28.35;
-    case 'lb': return amount * 453.6;
     case 'to_taste':
-    case 'pinch': return tasteGrams(ingredient);
-    case 'none': return 0;
+    case 'pinch': {
+      const g = tasteGrams(ingredient);
+      warnings.push(
+        `${who}: "to taste"/"pinch" assumed ${g} g ('to taste' rule: salt 1 g, oil 5 g, else 2 g).`,
+      );
+      return { grams: g, warnings };
+    }
+    case 'none':
+      return { grams: 0, warnings };
     case 'piece':
     case 'medium':
     case 'large':
@@ -226,13 +340,27 @@ export function toGrams(
     case 'clove':
     case 'slice':
     case 'can':
-    default:
-      return amount * (ingredient?.pieceGrams ?? PIECE_DEFAULTS[unit] ?? 100);
+    default: {
+      const pieceGrams = ingredient?.pieceGrams;
+      if (pieceGrams != null) {
+        return { grams: amount * pieceGrams, warnings };
+      }
+      const def = PIECE_DEFAULTS[unit] ?? 100;
+      warnings.push(
+        `${who}: ${amount} ${unit} assumed ${amount * def} g — generic default (${def} g/${unit}), not ingredient-specific.`,
+      );
+      return { grams: amount * def, warnings };
+    }
   }
 }
 
+/** Round to 1 decimal — no false precision beyond kitchen-scale reality. */
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 // ---------------------------------------------------------------------------
-// Ingredient resolution
+// Ingredient resolution (unchanged from v21)
 // ---------------------------------------------------------------------------
 
 /** Prep/descriptor words dropped before token matching (they never identify). */
@@ -353,6 +481,7 @@ export interface ResolvedLine {
   quantity: string;
   /** Canonical catalogue name used for the lookup. */
   ingredient: string;
+  /** Grams (rounded to 1 decimal; 0 when the quantity was unknown). */
   grams: number;
 }
 
@@ -362,15 +491,26 @@ export interface RecipeComputation {
   portions: number;
   /** Item names that could not be resolved — caller flags recipe 'awaiting review'. */
   unresolved: string[];
+  /**
+   * Item names excluded from totals because their quantity could not be
+   * interpreted or their grams were unknown. Also forces `complete: false`.
+   */
+  incomplete: string[];
+  /**
+   * True only when every item resolved AND every quantity was interpreted
+   * with known grams. A partial calculation is never marked complete.
+   */
+  complete: boolean;
   warnings: string[];
   resolved: ResolvedLine[];
 }
 
 /**
  * Resolve each item, convert to grams, look up per-100-g nutrients, and sum
- * via the existing computeRecipeNutrition engine. Unresolved items contribute
- * 0 and are listed in `unresolved`; every assumption is recorded in
- * `warnings`. Water/salt contribute 0 (catalogue zeros).
+ * via the existing computeRecipeNutrition engine. Unresolved items and
+ * un-interpretable quantities contribute 0 and are listed in `unresolved` /
+ * `incomplete`; every assumption is recorded in `warnings`. Water/salt
+ * contribute 0 (catalogue zeros).
  */
 export function computeRecipe(
   items: RecipeItemInput[],
@@ -379,6 +519,7 @@ export function computeRecipe(
 ): RecipeComputation {
   const rows: RecipeIngredientInput[] = [];
   const unresolved: string[] = [];
+  const incomplete: string[] = [];
   const warnings: string[] = [];
   const resolved: ResolvedLine[] = [];
 
@@ -392,19 +533,32 @@ export function computeRecipe(
       );
       continue;
     }
-    const { amount, unit } = parseQuantity(item.quantity);
-    if (unit === 'none') {
-      warnings.push(
-        `"${item.name}": no parseable quantity in "${item.quantity}" — counted as 0 g.`,
-      );
+    const parsed = parseQuantity(item.quantity);
+    if (parsed.unknown) {
+      incomplete.push(item.name);
+      const why =
+        parsed.unknown === 'range'
+          ? `a range ("${item.quantity}") — ranges are not midpointed, ask for one value`
+          : parsed.unknown === 'unrecognized-unit'
+            ? `an unrecognized unit in "${item.quantity}"`
+            : parsed.unknown === 'bare-fraction'
+              ? `a bare fraction ("${item.quantity}") with no unit`
+              : `no parseable quantity in "${item.quantity}"`;
+      warnings.push(`"${item.name}": ${why} — nutrition marked incomplete.`);
+      resolved.push({ name: item.name, quantity: item.quantity, ingredient: hit.name, grams: 0 });
+      continue;
     }
-    const grams = toGrams(amount, unit, hit);
-    if (unit === 'to_taste' || unit === 'pinch') {
+    const conv = toGrams(parsed.amount, parsed.unit, hit);
+    warnings.push(...conv.warnings);
+    if (conv.grams == null) {
+      incomplete.push(item.name);
       warnings.push(
-        `"${item.name}": "${item.quantity}" assumed ${grams} g ` +
-        `('to taste' rule: salt 1 g, oil 5 g, else 2 g).`,
+        `"${item.name}": grams could not be determined — nutrition marked incomplete.`,
       );
+      resolved.push({ name: item.name, quantity: item.quantity, ingredient: hit.name, grams: 0 });
+      continue;
     }
+    const grams = round1(conv.grams);
     if (hit.usedRawDefault) {
       warnings.push(
         `"${item.name}" matched raw & cooked variants — used raw/dry ` +
@@ -424,5 +578,6 @@ export function computeRecipe(
   }
 
   const { totals, perPortion, portions } = computeRecipeNutrition(rows, servings);
-  return { totals, perServing: perPortion, portions, unresolved, warnings, resolved };
+  const complete = unresolved.length === 0 && incomplete.length === 0;
+  return { totals, perServing: perPortion, portions, unresolved, incomplete, complete, warnings, resolved };
 }

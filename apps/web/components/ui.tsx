@@ -319,11 +319,18 @@ export function Modal({
   onClose,
   title,
   children,
+  role = 'dialog',
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  /**
+   * ARIA role of the dialog panel. Use 'alertdialog' for confirmation
+   * dialogs that require an explicit answer (e.g. incomplete-nutrition
+   * acknowledgements) so screen readers announce the interruption.
+   */
+  role?: 'dialog' | 'alertdialog';
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   // onClose is often an inline arrow (new identity every parent render).
@@ -354,7 +361,7 @@ export function Modal({
     >
       <div
         ref={panelRef}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}

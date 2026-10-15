@@ -7,10 +7,13 @@
  *    none colliding with existing seed.ts slugs;
  *  - structural minimums (>=4 ingredients, >=3 steps, valid enums);
  *  - stored nutrition === engine recomputation (never hand-adjusted);
- *  - needsReview === (unresolved.length > 0);
- *  - tags are valid against ingredient names (vegan/dairy-free/gluten-free/
- *    halal-friendly claims checked programmatically) and against the
- *    computed per-serving values (high-protein/high-fiber/low-calorie).
+ *  - needsReview === (unresolved.length > 0 || incomplete.length > 0)
+ *    (v21.2: an uninterpretable quantity or unknown grams also flags review);
+ *  - tags are valid against ingredient names (vegan/dairy-free/gluten-free
+ *    claims checked programmatically) and against the
+ *    computed per-serving values (high-protein/high-fiber/low-calorie);
+ *  - v21.2 P8 claims policy: 'halal-friendly' requires a recorded human
+ *    review — the old pork-absence inference is asserted dead.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -36,7 +39,6 @@ const EGG = new Set(['egg', 'eggs', 'anda', 'anday']);
 const DAIRY = new Set(['dahi', 'yogurt', 'curd', 'milk', 'ghee', 'paneer', 'butter', 'cream', 'malai', 'khoya', 'khoa', 'mawa', 'cheese', 'doodh']);
 const HONEY = new Set(['honey', 'shehad']);
 const WHEAT = new Set(['atta', 'maida', 'roti', 'chapati', 'phulka', 'paratha', 'wheat', 'semolina', 'sooji', 'suji', 'barley', 'rye']);
-const PORK = new Set(['pork', 'bacon', 'ham', 'pepperoni', 'lard']);
 
 const SEED_TS_SLUGS: Set<string> = new Set(
   [...readFileSync(resolve(process.cwd(), 'prisma/seed.ts'), 'utf8').matchAll(/slug:\s*'([^']+)'/g)].map((m) => m[1]),
@@ -81,7 +83,9 @@ describe('pakistani recipe batch', () => {
         expect(Math.abs(c.perServing[k] - r.computed.perServing[k])).toBeLessThanOrEqual(0.051);
       }
       expect([...c.unresolved].sort()).toEqual([...r.computed.unresolved].sort());
-      expect(r.needsReview).toBe(c.unresolved.length > 0);
+      // v21.2: incomplete quantities (ranges, bare fractions, volumes with
+      // no documented density) also flag review — never silently partial.
+      expect(r.needsReview).toBe(c.unresolved.length > 0 || c.incomplete.length > 0);
     }
   });
 
@@ -95,7 +99,13 @@ describe('pakistani recipe batch', () => {
       }
       if (tags.has('dairy-free')) expect(hasToken(names, DAIRY)).toBe(false);
       if (tags.has('gluten-free')) expect(hasToken(names, WHEAT)).toBe(false);
-      if (tags.has('halal-friendly')) expect(hasToken(names, PORK)).toBe(false);
+      // v21.2 P8: pork-absence alone NEVER grants 'halal-friendly'. The tag
+      // requires a recorded human review (halalReview). No batch recipe has
+      // one, so none may carry the tag — this fails if the old inference
+      // ("no pork ⟹ halal-friendly") ever returns.
+      expect(tags.has('halal-friendly'), `${r.slug} halal-friendly`).toBe(
+        Boolean(r.halalReview),
+      );
       // completeness: qualifying recipes must carry the tag
       if (!hasToken(names, MEAT) && !hasToken(names, EGG) && !hasToken(names, DAIRY) && !hasToken(names, HONEY)) {
         expect(tags.has('vegan')).toBe(true);
@@ -115,13 +125,22 @@ describe('pakistani recipe batch', () => {
     }
   });
 
-  it('all review flags cleared after v21 ingredient gap-fill', () => {
-    // The 4 originally-flagged recipes (tinda, doodh-patti, sattu, shahi-tukra)
-    // now resolve against the expanded catalogue — zero flags remain.
-    const review = PAKISTANI_RECIPES.filter((r) => r.needsReview);
-    expect(review).toEqual([]);
+  it('review flags match a fresh v21.2 engine run (never hand-set)', () => {
+    // v21.2 replaced the "zero flags" expectation: quantities the engine
+    // cannot honestly convert (fresh herbs by the tbsp, bare fractions,
+    // volumes with no documented density) flag needsReview. Every flag must
+    // equal a fresh computeRecipe() verdict.
     for (const r of PAKISTANI_RECIPES) {
+      const c = computeRecipe(
+        r.ingredients.map((i) => ({ name: i.name, quantity: i.quantity })),
+        r.servings,
+        INGREDIENTS,
+      );
+      expect(r.needsReview).toBe(c.unresolved.length > 0 || c.incomplete.length > 0);
       expect(r.computed.unresolved).toEqual([]);
+      if (r.needsReview) {
+        expect(c.incomplete.length).toBeGreaterThan(0);
+      }
     }
   });
 });

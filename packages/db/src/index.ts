@@ -44,4 +44,15 @@ export type {
   Restaurant,
   RestaurantMenuItem,
   MenuCorrection,
+  // V21.2 — recipe aliases
+  RecipeAlias,
 } from '@prisma/client';
+
+// V21.2 — recipe alias normalization & search-clause helpers (pure, no DB I/O).
+export {
+  normalizeAlias,
+  detectAliasLanguage,
+  buildRecipeAliasRows,
+  buildAliasSearchClause,
+} from './alias-normalize.js';
+export type { AliasLanguage, RecipeAliasRow } from './alias-normalize.js';

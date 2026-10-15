@@ -580,3 +580,163 @@ account for a fresh checkout).
 **Tests.** New `apps/web/tests/integration/stripe-webhook-matching.test.ts`: 13/13 pass (old-sub event leaves current row untouched; unknown-sub/known-customer ACKed with no change; duplicate checkout sequential + concurrent → single activation; checkout without/with-wrong session mapping → no binding; unknown price on checkout → free + identifiers kept; metadata/price mismatch → free; price change to unknown on live sub → plan held; anomalous checkout never clobbers verified paid sub; grace expiry preserves sub id and later payment re-activates). Existing checkout tests in `stripe-webhook`, `webhook-gating`, and `billing-webhook-extended` were updated to seed the now-required server-side session mapping. Regression: `stripe-webhook` + `webhook-gating` + `billing-webhook-extended` + `billing-hardening` = 54/54; `billing-checkout-extended` + `billing-cancel-safety` + `billing-checkout-safety` = 27/27. `npx tsc --noEmit -p apps/web/tsconfig.json` → 0 errors. `next build` NOT run (dev server left running).
 
 **Not verified:** real Stripe end-to-end (needs his four test-mode keys); the session-mapping write path in the checkout route was verified by §13's tests, not re-verified here beyond the webhook side.
+
+---
+
+## 15. v21.2 recipe library hardening (2026-10-13) — 6 worker streams
+
+**Scope:** the recipe library only — data governance (P8/P9), serving contract
+(P4/P1), pagination/filter API (P5), alias persistence, tier badges (P10).
+
+**What changed.**
+- 270 seed recipes: 239 engine-computed v21 batch (Pakistani 60, Indian 24,
+  Middle Eastern 20, Turkish 15, Chinese/Japanese/Korean/Thai 15 each,
+  Mediterranean/Italian/Mexican/American/Continental 12 each) + 31
+  hand-authored originals. All 270 are tier `calculated-estimate`
+  (0 reviewed, 0 verified); the 31 originals were demoted from
+  `verified: true` → `false` (no verification evidence ever existed).
+- Claims policy (`packages/db/prisma/recipe-claims-policy.ts`, canonical):
+  161 pork-absence-inference `halal-friendly`/`halal` tags removed — 0 recipes
+  carry the tag; it now requires a recorded human review (`halalReview`).
+  Allergen lists are tracked as `declared-from-ingredient-names` with the
+  `ALLERGEN_CAVEAT` shown on the recipe detail page (declared list + caveat).
+- UNKNOWN-quantity policy: unresolved ingredients or un-convertible
+  quantities contribute 0 and set `needsReview` (92 seed recipes, reconciled
+  2026-10-14 by import-based recount: 16 Pakistani, 4 Indian/Middle-Eastern/Turkish, 40 Asian,
+  32 Western — the earlier "95" figure was a grep artifact that also matched
+  three header-comment prose mentions of the literal string) — never silently partial. Recipes stay visible, flagged.
+- Serving contract: per-serving × servings; servings-eaten selector defaults
+  to 1; no double-scaling. Custom-recipe per-100-g conversion uses the
+  canonical serving weight (`Food.servingWeightG` → servingUnit gram
+  annotation → mass/volume normalization, `packages/core/src/serving-weight.ts`);
+  unknown serving weight marks the row INCOMPLETE, never guessed.
+- Private recipes: owner-only reads (404 otherwise), including the favorite
+  route (`/api/recipes/[slug]/favorite`).
+
+**New migrations.**
+- `20261013161000_v212_food_serving_weight` — `Food.servingWeightG`
+  (canonical grams-per-serving; seeded for count/volume foods).
+- `20261014021500_v212_recipe_aliases` — `RecipeAlias`
+  (`recipeId`/`normalizedAlias` unique; language hint only).
+
+**New/changed API params.**
+- `GET /api/recipes`: real DB pagination — `page`, `pageSize` (max 48;
+  `limit` kept as alias), returns `total`/`pageCount`. Server-side filters:
+  `cuisine`, `diet`, `tag` (repeatable, AND semantics; `halal` ≡
+  `halal-friendly`), `excludeAllergen`, `minKcal`/`maxKcal`,
+  `minProtein`/`maxProtein`, `maxTime` (prep+cook), `mealType`, `difficulty`,
+  `sort` (name/time/kcal/protein). `q` matches titles AND persisted recipe
+  aliases (normalized; English/Urdu/Roman Urdu). `mine=1` lists the caller's
+  private custom recipes. Private recipes excluded from public browsing.
+- New `GET /api/recipes/meta`: cuisines/tags/mealTypes/difficulties/allergens
+  with counts (drives the filter UI).
+
+**UI (P10).** List cards and the detail page show a tier badge per recipe
+("Calculated estimate"/"Reviewed"/"Verified", `apps/web/lib/recipe-tier.ts`
+mirroring the canonical policy) plus an "Awaiting review" marker on list
+cards when `needsReview`. The detail page keeps the "Nutrition incomplete"
+banner and now renders the declared allergen list with the canonical caveat.
+No redesign; existing behavior otherwise preserved.
+
+**Known limitations (honest, by design).**
+- [v21.3 update, supersedes the old wording:] 0 reviewed / 0 verified in
+  seed data. The `verified`/`reviewed` tiers are reachable since v21.3 —
+  migration `20261014100000_v213_recipe_review_evidence` added the
+  `verificationEvidence`/`reviewEvidence` JSONB columns and
+  `POST /api/admin/recipes/[slug]/review` records evidence-backed reviews
+  (see §9 of `docs/recipe-data-quality.md`); the old "no columns yet" claim
+  was a v21.2 statement.
+- Engine recompute tests are regression checks, not accuracy proof.
+- Cooking transformations not modeled (raw vs cooked are separate catalogue
+  entries). Piece weights are home-kitchen averages (1 medium onion = 120 g,
+  1 egg = 50 g). Densities only where documented (no 1.0 fallback).
+  Spice entries recorded as all zeros (documented simplification).
+- Ingredient DB: 182 entries — 173 USDA standard-reference basis, 9
+  standard-estimate; 0 captured `sourceRef`s (never invented); values are
+  standard-reference, not lab-verified for any specific product/brand.
+- Allergen info is name-derived screening, not a certified analysis.
+- DB-backed verification (seed/tests) needs PostgreSQL; none available on
+  this VM — pure/data tests were run instead.
+
+## 16. v21.4 custom-recipe diet/allergen hardening (2026-10-15, Worker D — ITEM 6 + ITEM 8)
+
+**Scope:** the custom-recipe creation path only (POST /api/recipes + the
+`/recipes/new` UI + a pure core helper). The PATCH route's material-change
+path belongs to the PATCH worker — this brief exposes a pure helper for
+it and does not touch the PATCH route.
+
+**Defect confirmed (ITEM 6):** POST /api/recipes did
+`dietCategory: input.dietCategory ?? 'vegetarian'` — a meat recipe with an
+omitted field was labeled vegetarian — and stored `allergens: []` with no
+record that screening ever happened (an empty list read as "no allergens").
+
+**What changed (files).**
+- `packages/core/src/validation.ts` — `dietCategory` is now REQUIRED in
+  `CustomRecipeSchema` (missing/unknown → zod validation error, surfaced as
+  400 `validation_error`); `CustomRecipePatchSchema` (`.partial()`) keeps it
+  optional (absent = leave as-is).
+- `packages/core/src/recipe-allergen-screening.ts` (new, pure, exported from
+  `@fitfusion/core`) — `screenIngredientAllergens(names)` (nine major
+  allergen families from ingredient names; plural-tolerant, word-boundary
+  matching so `eggplant`/`coconut` don't false-positive; empty result means
+  "not detected", never allergen-free) and
+  `dietAllergenRecheckNeeded(prev, next)` (true on ingredient-name-set or
+  dietCategory change; false for portions-only/grams-only edits; false when
+  there is no previous record since creation screens unconditionally).
+- `packages/db/prisma/migrations/20261015090000_v214_recipe_allergen_screening/migration.sql`
+  (new, additive, no backfill) — `Recipe.allergenScreened BOOLEAN NOT NULL
+  DEFAULT false`. All pre-v21.4 rows (incl. all 270 seed recipes) stay
+  `false`; no per-row screening record exists, so `true` would invent
+  evidence. Schema updated (`schema.prisma`); `prisma validate` → valid.
+- `apps/web/app/api/recipes/route.ts` (POST) — diet default removed (schema
+  enforces it); creation now runs the name screening and stores
+  `allergens: <detected>` + `allergenScreened: true`.
+- `apps/web/app/(app)/recipes/new/page.tsx` — diet Select starts unselected
+  ("Choose diet…"); Save disabled until an explicit choice is made.
+- `apps/web/app/(app)/recipes/[slug]/page.tsx` — allergen copy is now
+  screening-aware: non-empty list → "Declared from ingredient names: …";
+  empty + screened → "None detected from ingredient names."; empty +
+  unscreened → "Allergen screening has not been performed for this recipe."
+  The old "None declared from ingredient names." line is gone; the
+  ALLERGEN_CAVEAT is unchanged.
+
+**Tests run (2026-10-15, all executed by this worker).**
+- `npx tsc --noEmit`: 0 errors (packages/core, packages/db, apps/web).
+- `packages/core` vitest: **320/320** (23 files) — incl. new
+  `recipe-allergen-screening.test.ts` 11/11 and the new v21.4
+  `CustomRecipeSchema` cases; 4 pre-existing P4 fixtures updated for the
+  now-required dietCategory (the intended behavior change).
+- `apps/web/tests/integration/v214-custom-recipe-diet-allergen.test.ts`:
+  **7/7 mock-tested** — missing/unknown dietCategory → 400 with nothing
+  created; meat recipe stored as `non_vegetarian`; wheat+milk+eggs+peanuts
+  detected from names with `allergenScreened: true`; clean recipe → `[]`
+  with `screened: true`; declared-row names screened too.
+- `apps/web/tests/integration/v214-allergen-screened-db.test.ts`: 2/2
+  **skipped** (no PostgreSQL on this VM; probe-guarded). The migration is
+  source-implemented and the schema validates, but it has not been applied
+  to any database by this worker — run `npm run db:migrate` where
+  PostgreSQL exists.
+- Existing DB-gated POST fixtures updated for the required dietCategory
+  (`v18-custom-recipes.test.ts`, `v212-nutrition-correctness.test.ts` —
+  skipped here, will execute against real PostgreSQL).
+- Spot-run, unaffected: `v20-recipe-import` 28 passed + 1 skipped,
+  `recipe-patch-governance-mocked` 6/6, `recipe-browse-pagination-mocked`
+  5/5.
+- **Not run:** `next build`, Playwright/browser tests, real-service
+  verification. Old test counts quoted elsewhere are historical, not fresh.
+
+**Seed-count truth** (quote, `npx tsx
+packages/db/prisma/recipe-quality-report.ts`, executed 2026-10-15):
+"recipes: 270 total (239 v21 batch + 31 hand-authored originals) …
+needsReview total: 92 … reviewed: 0 | verified: 0 … ingredients: 182 (USDA
+standard-reference=173, standard-estimate=9; sourceRef=0,
+lastReviewedAt=0)".
+
+**Not verified against the final tree (other workers own these):** the
+evidence serializer, the review route, the diary route, and the PATCH
+route's adoption of `dietAllergenRecheckNeeded()`. The recipe-import review
+screen already sends an explicit `dietCategory` (checked, unchanged).
+
+**Still needed from Dr. Ammad:** nothing for ITEM 6/8 — but the v21.4
+migration must be applied (`npm run db:migrate`) wherever the app database
+runs before the new column exists in production.

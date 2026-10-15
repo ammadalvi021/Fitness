@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@fitfusion/db';
 import { requireUser } from '@/lib/auth';
+import { canViewRecipe } from '@/lib/recipe-access';
 import { apiError, apiOk } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +9,8 @@ export const dynamic = 'force-dynamic';
 /**
  * Save a curated recipe as a favorite meal (nutrition stored per serving).
  * Idempotent: favoriting twice returns the existing record.
+ * Private recipes are favoritable only by their owner (404 otherwise, so
+ * existence is not leaked).
  */
 export async function POST(
   _req: NextRequest,
@@ -19,7 +22,7 @@ export async function POST(
   const recipe =
     (await prisma.recipe.findUnique({ where: { id: params.slug } })) ??
     (await prisma.recipe.findUnique({ where: { slug: params.slug } }));
-  if (!recipe) {
+  if (!recipe || !canViewRecipe(recipe, s.user)) {
     return apiError('not_found', 'Recipe not found', 404);
   }
 

@@ -103,6 +103,14 @@ export interface DiaryEntry {
   /** V20: micro snapshot at log time (absent key = not tracked). */
   micros?: MicroNutrients | null;
   source?: string;
+  /** V21.4: recipe FK (present when the entry was logged from a recipe). */
+  recipeId?: string | null;
+  /**
+   * V21.4: true when the entry was logged with acknowledged incomplete
+   * (partial) recipe nutrition — displayed as a partial-nutrition badge so
+   * the totals are never presented as complete.
+   */
+  nutritionPartial?: boolean | null;
 }
 
 export function entryName(e: DiaryEntry): string {

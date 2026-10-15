@@ -78,10 +78,21 @@ describe('western recipe batch size and shape', () => {
 });
 
 describe('western recipe honesty contract', () => {
-  it('every ingredient resolves — zero unresolved, zero needsReview', () => {
+  it('every ingredient resolves; needsReview matches the v21.2 engine verdict', () => {
     for (const r of WESTERN_RECIPES) {
       expect(r.computed.unresolved, `${r.slug} unresolved`).toEqual([]);
-      expect(r.needsReview, `${r.slug} needsReview`).toBe(false);
+      // v21.2: quantities the engine cannot honestly convert (fresh herbs
+      // by the tbsp, bare fractions, volumes with no documented density)
+      // flag needsReview. Every flag must equal a fresh computeRecipe()
+      // verdict — never hand-set.
+      const fresh = computeRecipe(
+        r.ingredients.map((i) => ({ name: i.name, quantity: i.quantity })),
+        r.servings,
+        INGREDIENTS,
+      );
+      expect(r.needsReview, `${r.slug} needsReview`).toBe(
+        fresh.unresolved.length > 0 || fresh.incomplete.length > 0,
+      );
     }
   });
 
@@ -123,6 +134,27 @@ describe('western recipe honesty contract', () => {
     for (const r of WESTERN_RECIPES) {
       const hasMeat = r.ingredients.some((i) => meatRe.test(i.name));
       expect(r.dietCategory === 'non_vegetarian', r.slug).toBe(hasMeat);
+    }
+  });
+});
+
+describe('v21.2 P8 claims policy', () => {
+  it("no 'halal' / 'halal-friendly' tag without a recorded human review", () => {
+    // The old pork-absence inference granted 'halal' tags to 25 western
+    // recipes. Under the new policy the tag requires a recorded review;
+    // no batch recipe has one, so the tags must be absent.
+    for (const r of WESTERN_RECIPES) {
+      expect(r.tags.includes('halal'), `${r.slug} halal`).toBe(false);
+      expect(r.tags.includes('halal-friendly'), `${r.slug} halal-friendly`).toBe(false);
+      expect(r.halalReview ?? null, `${r.slug} halalReview`).toBeNull();
+    }
+  });
+
+  it('allergen lists are name-derived (caveat applies)', () => {
+    for (const r of WESTERN_RECIPES) {
+      expect(r.allergenBasis ?? 'declared-from-ingredient-names').toBe(
+        'declared-from-ingredient-names',
+      );
     }
   });
 });

@@ -94,3 +94,42 @@ describe('honesty invariants', () => {
     expect(seen.size).toBeGreaterThan(0);
   });
 });
+
+describe('provenance (v21.2 P9)', () => {
+  it('every entry has a source label consistent with its basis', () => {
+    for (const i of INGREDIENTS) {
+      expect(['USDA FoodData Central', 'standard estimate']).toContain(i.source);
+      // source is a plain relabel of the already-recorded basis — no new claim.
+      if (i.basis === 'USDA FoodData Central standard reference') {
+        expect(i.source).toBe('USDA FoodData Central');
+      } else {
+        expect(i.source).toBe('standard estimate');
+      }
+    }
+  });
+
+  it('no invented USDA record IDs: sourceRef is absent or a real usda-<fdcId>', () => {
+    // The real identifier form is established by apps/web/lib/usda.ts:
+    // id: `usda-${fdcId}` where fdcId is the numeric FoodData Central ID.
+    // Per-100-g standard-reference values were never captured per-record,
+    // so every v21 entry honestly has NO sourceRef.
+    for (const i of INGREDIENTS) {
+      if (i.sourceRef !== undefined) {
+        expect(i.sourceRef, `${i.name} sourceRef`).toMatch(/^usda-\d+$/);
+      }
+    }
+    const withRef = INGREDIENTS.filter((i) => i.sourceRef !== undefined);
+    expect(withRef.length).toBe(0);
+  });
+
+  it('lastReviewedAt is absent or a real ISO date — never backfilled', () => {
+    for (const i of INGREDIENTS) {
+      if (i.lastReviewedAt !== undefined) {
+        expect(i.lastReviewedAt, `${i.name} lastReviewedAt`).toMatch(
+          /^\d{4}-\d{2}-\d{2}/,
+        );
+        expect(Number.isNaN(Date.parse(i.lastReviewedAt))).toBe(false);
+      }
+    }
+  });
+});

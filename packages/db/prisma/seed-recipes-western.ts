@@ -28,6 +28,13 @@
  *    title says so. No frozen/processed shortcuts are mislabeled.
  *  - Oil, cheese, sugar and honey quantities are explicit and measured;
  *    nothing deep-fried is tagged low-calorie.
+ *  - CLAIMS POLICY (v21.2 P8): the tag 'halal-friendly' may appear ONLY
+ *    with a recorded human review (`halalReview`) — pork-absence screening
+ *    alone never grants it (the earlier 'halal' tags, granted by that
+ *    inference, have been removed); `allergens` is declared from ingredient
+ *    names (name-based screening, not a certified analysis) and the UI must
+ *    show the caveat from recipe-claims-policy.ts. No recipe in this batch
+ *    has a recorded halal review or a human-reviewed allergen list.
  */
 
 export interface RecipeSeed {
@@ -45,6 +52,17 @@ export interface RecipeSeed {
   ingredients: { name: string; quantity: string; grams: number }[];
   instructions: string[];
   allergens: string[];
+  /**
+   * Recorded human halal review — the ONLY path to the 'halal-friendly'
+   * tag (v21.2 P8 claims policy). No recipe in this batch has one.
+   */
+  halalReview?: { reviewer: string; reviewedAt: string };
+  /**
+   * How `allergens` was produced. Absent = 'declared-from-ingredient-names'
+   * (name-based screening, not a certified analysis). No recipe in this
+   * batch has a human-reviewed allergen list.
+   */
+  allergenBasis?: 'declared-from-ingredient-names' | 'human-reviewed';
   substitutions?: string;
   storage?: string;
   computed: {
@@ -64,16 +82,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "meal-prep",
-      "mediterranean",
-      "no-cook",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "gluten-free", "meal-prep", "mediterranean", "no-cook", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 0,
@@ -152,15 +161,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate in an airtight container up to 3 days; add fresh herbs just before serving.",
     "computed": {
       "perServing": {
-        "kcal": 272.8,
-        "proteinG": 10.9,
-        "carbsG": 37,
-        "fatG": 10.5,
-        "fiberG": 10.3
+        "kcal": 264.1,
+        "proteinG": 10.6,
+        "carbsG": 36.4,
+        "fatG": 9.8,
+        "fiberG": 9.8
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "mediterranean-grilled-chicken-rice-bowl",
@@ -168,13 +177,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "meal-prep",
-      "mediterranean"
-    ],
+    "tags": ["gluten-free", "meal-prep", "mediterranean", "high-protein"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 30,
@@ -252,15 +255,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate components separately up to 3 days; keep sauce apart until serving.",
     "computed": {
       "perServing": {
-        "kcal": 530.4,
-        "proteinG": 42.6,
-        "carbsG": 55.3,
-        "fatG": 14.9,
-        "fiberG": 4
+        "kcal": 523.4,
+        "proteinG": 42.5,
+        "carbsG": 55,
+        "fatG": 14.3,
+        "fiberG": 3.7
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "mediterranean-red-lentil-salad",
@@ -268,16 +271,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "budget-friendly",
-      "dairy-free",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "meal-prep",
-      "mediterranean",
-      "vegan"
-    ],
+    "tags": ["budget-friendly", "dairy-free", "gluten-free", "meal-prep", "mediterranean", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 20,
@@ -343,15 +337,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days; the salad improves after a few hours.",
     "computed": {
       "perServing": {
-        "kcal": 269.7,
-        "proteinG": 13.2,
-        "carbsG": 38.3,
-        "fatG": 8.2,
-        "fiberG": 7.1
+        "kcal": 262.6,
+        "proteinG": 13,
+        "carbsG": 38,
+        "fatG": 7.6,
+        "fiberG": 6.9
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "brown-rice-herb-tabbouleh-salad",
@@ -362,15 +356,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "low-calorie",
-      "make-ahead",
-      "mediterranean",
-      "no-cook",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "gluten-free", "make-ahead", "mediterranean", "no-cook", "vegan", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 25,
@@ -433,10 +419,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days in a sealed container.",
     "computed": {
       "perServing": {
-        "kcal": 280.7,
+        "kcal": 275.4,
         "proteinG": 5.4,
         "carbsG": 45.5,
-        "fatG": 9.2,
+        "fatG": 8.6,
         "fiberG": 3.9
       },
       "unresolved": []
@@ -449,15 +435,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "baked-not-fried",
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "mediterranean",
-      "one-pan"
-    ],
+    "tags": ["baked-not-fried", "dairy-free", "gluten-free", "mediterranean", "one-pan", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 35,
@@ -529,15 +507,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate leftovers up to 2 days; reheat gently to avoid drying the fish.",
     "computed": {
       "perServing": {
-        "kcal": 357,
-        "proteinG": 33.4,
-        "carbsG": 27.8,
-        "fatG": 13.2,
-        "fiberG": 5
+        "kcal": 348.4,
+        "proteinG": 33.1,
+        "carbsG": 27.2,
+        "fatG": 12.5,
+        "fiberG": 4.5
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "mediterranean-kidney-bean-spinach-soup",
@@ -545,16 +523,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "freezer-friendly",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "mediterranean",
-      "one-pot",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "freezer-friendly", "gluten-free", "mediterranean", "one-pot", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 45,
@@ -625,10 +594,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 213.1,
+        "kcal": 210.5,
         "proteinG": 11.7,
         "carbsG": 34.7,
-        "fatG": 4.5,
+        "fatG": 4.2,
         "fiberG": 12.9
       },
       "unresolved": []
@@ -641,15 +610,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "mediterranean",
-      "sheet-pan",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "gluten-free", "mediterranean", "sheet-pan", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 35,
@@ -724,15 +685,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days; reheat in a hot oven to re-crisp.",
     "computed": {
       "perServing": {
-        "kcal": 275.5,
-        "proteinG": 6.2,
-        "carbsG": 39.7,
-        "fatG": 12.2,
-        "fiberG": 10.4
+        "kcal": 265.9,
+        "proteinG": 6.1,
+        "carbsG": 39.4,
+        "fatG": 11.3,
+        "fiberG": 10.2
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "tzatziki-chicken-roti-wrap",
@@ -740,13 +701,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "lunch",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "mediterranean",
-      "on-the-go"
-    ],
+    "tags": ["mediterranean", "on-the-go", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 15,
@@ -822,15 +777,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; keep filling and rotis separate up to 2 days refrigerated.",
     "computed": {
       "perServing": {
-        "kcal": 348.6,
-        "proteinG": 37,
-        "carbsG": 24.3,
-        "fatG": 10.7,
-        "fiberG": 3.7
+        "kcal": 344.3,
+        "proteinG": 36.9,
+        "carbsG": 24,
+        "fatG": 10.3,
+        "fiberG": 3.4
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "lemon-herb-chicken-skewers",
@@ -838,15 +793,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "grill",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "mediterranean"
-    ],
+    "tags": ["dairy-free", "gluten-free", "grill", "mediterranean", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 25,
     "cookMin": 15,
@@ -905,15 +852,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate cooked skewers up to 3 days; reheat in a hot oven.",
     "computed": {
       "perServing": {
-        "kcal": 302.6,
-        "proteinG": 35.7,
-        "carbsG": 12.5,
-        "fatG": 11.8,
-        "fiberG": 3.3
+        "kcal": 293.9,
+        "proteinG": 35.4,
+        "carbsG": 11.9,
+        "fatG": 11.1,
+        "fiberG": 2.8
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "chickpea-spinach-stew",
@@ -921,16 +868,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "freezer-friendly",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "mediterranean",
-      "one-pot",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "freezer-friendly", "gluten-free", "mediterranean", "one-pot", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 50,
@@ -1003,10 +941,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 303.2,
+        "kcal": 297.9,
         "proteinG": 13.3,
         "carbsG": 41.7,
-        "fatG": 11.1,
+        "fatG": 10.5,
         "fiberG": 12.2
       },
       "unresolved": []
@@ -1019,13 +957,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "snack",
     "dietCategory": "vegetarian",
-    "tags": [
-      "gluten-free",
-      "low-calorie",
-      "mediterranean",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["gluten-free", "mediterranean", "no-cook", "vegetarian", "low-calorie"],
     "servings": 4,
     "prepMin": 10,
     "cookMin": 0,
@@ -1076,15 +1008,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 2 days; stir before serving.",
     "computed": {
       "perServing": {
-        "kcal": 123.9,
-        "proteinG": 9.8,
-        "carbsG": 7.6,
-        "fatG": 6.4,
-        "fiberG": 0.7
+        "kcal": 121.4,
+        "proteinG": 9.7,
+        "carbsG": 7.3,
+        "fatG": 6.2,
+        "fiberG": 0.4
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "stuffed-bell-peppers-rice-herb",
@@ -1092,16 +1024,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mediterranean",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "baked-not-fried",
-      "dairy-free",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "make-ahead",
-      "mediterranean",
-      "vegan"
-    ],
+    "tags": ["baked-not-fried", "dairy-free", "gluten-free", "make-ahead", "mediterranean", "vegan", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 35,
@@ -1167,15 +1090,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; reheat covered in the oven.",
     "computed": {
       "perServing": {
-        "kcal": 284.2,
-        "proteinG": 5.8,
-        "carbsG": 45.4,
-        "fatG": 9.3,
-        "fiberG": 6
+        "kcal": 273.9,
+        "proteinG": 5.4,
+        "carbsG": 44.5,
+        "fatG": 8.6,
+        "fiberG": 5.3
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "whole-wheat-tomato-vegetable-pasta",
@@ -1186,13 +1109,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "from-scratch",
-      "high-fiber",
-      "italian",
-      "vegetarian"
-    ],
+    "tags": ["dairy-free", "from-scratch", "italian", "vegetarian", "high-fiber"],
     "servings": 4,
     "prepMin": 40,
     "cookMin": 25,
@@ -1262,15 +1179,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate cooked pasta with sauce up to 3 days; fresh uncooked ribbons keep 1 day chilled.",
     "computed": {
       "perServing": {
-        "kcal": 429.3,
-        "proteinG": 16.8,
-        "carbsG": 69.1,
-        "fatG": 12.4,
-        "fiberG": 11.6
+        "kcal": 422.3,
+        "proteinG": 16.7,
+        "carbsG": 68.8,
+        "fatG": 11.7,
+        "fiberG": 11.4
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "grilled-chicken-garlic-herb-pasta-light",
@@ -1278,14 +1195,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "from-scratch",
-      "halal",
-      "high-fiber",
-      "high-protein",
-      "italian"
-    ],
+    "tags": ["dairy-free", "from-scratch", "italian", "high-protein", "high-fiber"],
     "servings": 4,
     "prepMin": 35,
     "cookMin": 25,
@@ -1354,15 +1264,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; refresh with a squeeze of lemon when reheating.",
     "computed": {
       "perServing": {
-        "kcal": 435.1,
-        "proteinG": 35,
-        "carbsG": 56,
-        "fatG": 9.6,
-        "fiberG": 9.2
+        "kcal": 430.8,
+        "proteinG": 34.9,
+        "carbsG": 55.7,
+        "fatG": 9.2,
+        "fiberG": 9
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "minestrone-soup",
@@ -1370,16 +1280,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "freezer-friendly",
-      "gluten-free",
-      "high-fiber",
-      "italian",
-      "low-calorie",
-      "one-pot",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "freezer-friendly", "gluten-free", "italian", "one-pot", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 50,
@@ -1455,15 +1356,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 206.4,
-        "proteinG": 9.2,
-        "carbsG": 35.4,
-        "fatG": 4.4,
-        "fiberG": 11.2
+        "kcal": 202,
+        "proteinG": 9,
+        "carbsG": 35.1,
+        "fatG": 4,
+        "fiberG": 11
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "baked-eggplant-mozzarella-light",
@@ -1471,15 +1372,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "baked-not-fried",
-      "dairy-free",
-      "gluten-free",
-      "high-fiber",
-      "italian",
-      "low-calorie",
-      "vegan"
-    ],
+    "tags": ["baked-not-fried", "dairy-free", "gluten-free", "italian", "vegan", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 35,
@@ -1532,15 +1425,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; reheat covered so the cheese re-melts.",
     "computed": {
       "perServing": {
-        "kcal": 178.8,
-        "proteinG": 11,
-        "carbsG": 15,
-        "fatG": 9.4,
-        "fiberG": 6
+        "kcal": 174.5,
+        "proteinG": 10.9,
+        "carbsG": 14.7,
+        "fatG": 9.1,
+        "fiberG": 5.8
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "chickpea-tuna-salad",
@@ -1548,17 +1441,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "lunch",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-fiber",
-      "high-protein",
-      "italian",
-      "low-calorie",
-      "meal-prep",
-      "no-cook"
-    ],
+    "tags": ["dairy-free", "gluten-free", "italian", "meal-prep", "no-cook", "high-protein", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 0,
@@ -1623,15 +1506,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 2 days in a sealed container.",
     "computed": {
       "perServing": {
-        "kcal": 274.4,
-        "proteinG": 27.8,
-        "carbsG": 26,
-        "fatG": 6.9,
-        "fiberG": 7.2
+        "kcal": 270.1,
+        "proteinG": 27.7,
+        "carbsG": 25.7,
+        "fatG": 6.5,
+        "fiberG": 7
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "mushroom-brown-rice-risotto-light",
@@ -1639,13 +1522,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "gluten-free",
-      "italian",
-      "low-calorie",
-      "one-pot",
-      "vegetarian"
-    ],
+    "tags": ["gluten-free", "italian", "one-pot", "vegetarian", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 45,
@@ -1709,10 +1586,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; loosen with a splash of milk when reheating.",
     "computed": {
       "perServing": {
-        "kcal": 326.5,
+        "kcal": 324.4,
         "proteinG": 9.7,
-        "carbsG": 55.6,
-        "fatG": 7.9,
+        "carbsG": 55.7,
+        "fatG": 7.6,
         "fiberG": 3.4
       },
       "unresolved": []
@@ -1725,14 +1602,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "freezer-friendly",
-      "gluten-free",
-      "italian",
-      "low-calorie",
-      "one-pot",
-      "vegetarian"
-    ],
+    "tags": ["freezer-friendly", "gluten-free", "italian", "one-pot", "vegetarian", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 30,
@@ -1797,10 +1667,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 135.6,
-        "proteinG": 4.7,
+        "kcal": 133.3,
+        "proteinG": 4.8,
         "carbsG": 22,
-        "fatG": 4.2,
+        "fatG": 3.9,
         "fiberG": 4.5
       },
       "unresolved": []
@@ -1813,15 +1683,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "italian",
-      "low-calorie",
-      "one-pot"
-    ],
+    "tags": ["dairy-free", "gluten-free", "italian", "one-pot", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 40,
@@ -1883,10 +1745,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; flavours deepen overnight.",
     "computed": {
       "perServing": {
-        "kcal": 349.3,
+        "kcal": 346.7,
         "proteinG": 34.6,
         "carbsG": 13.4,
-        "fatG": 16.9,
+        "fatG": 16.6,
         "fiberG": 3.4
       },
       "unresolved": []
@@ -1899,14 +1761,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "italian",
-      "low-calorie",
-      "quick"
-    ],
+    "tags": ["gluten-free", "italian", "quick", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 10,
@@ -1968,15 +1823,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; refrigerate up to 1 day if needed.",
     "computed": {
       "perServing": {
-        "kcal": 168.2,
-        "proteinG": 25.9,
-        "carbsG": 3.9,
-        "fatG": 6.1,
-        "fiberG": 0.8
+        "kcal": 165.6,
+        "proteinG": 25.7,
+        "carbsG": 3.6,
+        "fatG": 5.9,
+        "fiberG": 0.6
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "spinach-mozzarella-stuffed-chicken",
@@ -1984,15 +1839,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "baked-not-fried",
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "italian",
-      "low-calorie"
-    ],
+    "tags": ["baked-not-fried", "dairy-free", "gluten-free", "italian", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 30,
@@ -2045,10 +1892,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; reheat gently to keep the chicken juicy.",
     "computed": {
       "perServing": {
-        "kcal": 298.4,
+        "kcal": 295.8,
         "proteinG": 42,
         "carbsG": 3.8,
-        "fatG": 12.1,
+        "fatG": 11.8,
         "fiberG": 1.1
       },
       "unresolved": []
@@ -2061,14 +1908,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "baked-not-fried",
-      "freezer-friendly",
-      "gluten-free",
-      "italian",
-      "low-calorie",
-      "vegetarian"
-    ],
+    "tags": ["baked-not-fried", "freezer-friendly", "gluten-free", "italian", "vegetarian", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 35,
@@ -2127,10 +1967,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 102.4,
-        "proteinG": 3.3,
+        "kcal": 100.1,
+        "proteinG": 3.4,
         "carbsG": 14.1,
-        "fatG": 4.3,
+        "fatG": 4,
         "fiberG": 3.4
       },
       "unresolved": []
@@ -2143,15 +1983,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Italian",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "italian",
-      "low-calorie",
-      "one-pan"
-    ],
+    "tags": ["dairy-free", "gluten-free", "italian", "one-pan", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 25,
@@ -2214,15 +2046,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 2 days; reheat gently in the sauce.",
     "computed": {
       "perServing": {
-        "kcal": 277.9,
-        "proteinG": 31.6,
-        "carbsG": 9.5,
-        "fatG": 13.1,
-        "fiberG": 2.3
+        "kcal": 270.9,
+        "proteinG": 31.4,
+        "carbsG": 9.2,
+        "fatG": 12.4,
+        "fiberG": 2.1
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "chicken-kidney-bean-burrito-bowl",
@@ -2230,15 +2062,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-fiber",
-      "high-protein",
-      "meal-prep",
-      "mexican"
-    ],
+    "tags": ["dairy-free", "gluten-free", "meal-prep", "mexican", "high-protein", "high-fiber"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 30,
@@ -2308,15 +2132,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate components separately up to 3 days.",
     "computed": {
       "perServing": {
-        "kcal": 494.5,
-        "proteinG": 41.2,
-        "carbsG": 70.2,
-        "fatG": 5.9,
-        "fiberG": 9.9
+        "kcal": 492.3,
+        "proteinG": 41,
+        "carbsG": 69.9,
+        "fatG": 5.8,
+        "fiberG": 9.7
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "grilled-fish-roti-tacos",
@@ -2324,13 +2148,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "grill",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "mexican"
-    ],
+    "tags": ["grill", "mexican", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 25,
     "cookMin": 15,
@@ -2404,15 +2222,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best assembled fresh; keep filling refrigerated up to 2 days.",
     "computed": {
       "perServing": {
-        "kcal": 262.4,
-        "proteinG": 26.4,
-        "carbsG": 26,
+        "kcal": 260.7,
+        "proteinG": 26.2,
+        "carbsG": 25.8,
         "fatG": 5.7,
-        "fiberG": 4.4
+        "fiberG": 4.2
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "mexican-mixed-bean-chili",
@@ -2420,16 +2238,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "freezer-friendly",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "mexican",
-      "one-pot",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "freezer-friendly", "gluten-free", "mexican", "one-pot", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 60,
@@ -2505,15 +2314,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 319,
-        "proteinG": 18.7,
-        "carbsG": 59.2,
+        "kcal": 317.3,
+        "proteinG": 18.5,
+        "carbsG": 58.9,
         "fatG": 2.5,
-        "fiberG": 16.8
+        "fiberG": 16.6
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "chicken-tortilla-style-soup-light",
@@ -2521,14 +2330,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "mexican",
-      "one-pot"
-    ],
+    "tags": ["dairy-free", "mexican", "one-pot", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 30,
@@ -2598,15 +2400,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; keep roti strips separate so they stay crisp.",
     "computed": {
       "perServing": {
-        "kcal": 200.7,
-        "proteinG": 25.5,
-        "carbsG": 17.4,
-        "fatG": 3.5,
-        "fiberG": 3.1
+        "kcal": 199,
+        "proteinG": 25.4,
+        "carbsG": 17.1,
+        "fatG": 3.4,
+        "fiberG": 2.9
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "corn-black-eyed-pea-salad",
@@ -2614,16 +2416,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "meal-prep",
-      "mexican",
-      "no-cook",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "gluten-free", "meal-prep", "mexican", "no-cook", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 0,
@@ -2688,15 +2481,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days.",
     "computed": {
       "perServing": {
-        "kcal": 186.4,
-        "proteinG": 8.4,
-        "carbsG": 31.6,
-        "fatG": 5.3,
-        "fiberG": 7.5
+        "kcal": 182,
+        "proteinG": 8.3,
+        "carbsG": 31.3,
+        "fatG": 5,
+        "fiberG": 7.3
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "egg-bean-breakfast-wrap",
@@ -2704,14 +2497,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "high-fiber",
-      "high-protein",
-      "mexican",
-      "quick",
-      "vegetarian"
-    ],
+    "tags": ["dairy-free", "mexican", "quick", "vegetarian", "high-protein", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 12,
@@ -2778,15 +2564,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; filling keeps 1 day refrigerated.",
     "computed": {
       "perServing": {
-        "kcal": 372.6,
-        "proteinG": 23.5,
-        "carbsG": 43.6,
-        "fatG": 11.2,
-        "fiberG": 10.3
+        "kcal": 370.6,
+        "proteinG": 23.3,
+        "carbsG": 43.3,
+        "fatG": 11.1,
+        "fiberG": 10
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "shrimp-ceviche",
@@ -2794,15 +2580,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "snack",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "mexican",
-      "no-cook"
-    ],
+    "tags": ["dairy-free", "gluten-free", "mexican", "no-cook", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 25,
     "cookMin": 0,
@@ -2861,15 +2639,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Eat the same day; do not keep raw-cured seafood overnight.",
     "computed": {
       "perServing": {
-        "kcal": 123.4,
-        "proteinG": 21.7,
-        "carbsG": 9.6,
+        "kcal": 120.8,
+        "proteinG": 21.5,
+        "carbsG": 9.2,
         "fatG": 0.8,
-        "fiberG": 2.5
+        "fiberG": 2.2
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "chicken-cheese-roti-quesadilla-light",
@@ -2877,14 +2655,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "lunch",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "halal",
-      "high-protein",
-      "kid-friendly",
-      "low-calorie",
-      "mexican"
-    ],
+    "tags": ["dairy-free", "kid-friendly", "mexican", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 15,
@@ -2958,15 +2729,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "budget-friendly",
-      "dairy-free",
-      "gluten-free",
-      "low-calorie",
-      "mexican",
-      "one-pot",
-      "vegan"
-    ],
+    "tags": ["budget-friendly", "dairy-free", "gluten-free", "mexican", "one-pot", "vegan", "low-calorie"],
     "servings": 4,
     "prepMin": 10,
     "cookMin": 35,
@@ -3031,15 +2794,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days; sprinkle water before reheating.",
     "computed": {
       "perServing": {
-        "kcal": 328.6,
-        "proteinG": 8.3,
-        "carbsG": 61.6,
-        "fatG": 6.2,
-        "fiberG": 5.6
+        "kcal": 324.2,
+        "proteinG": 8.1,
+        "carbsG": 61.3,
+        "fatG": 5.8,
+        "fiberG": 5.4
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "chicken-fajita-bowl-no-tortilla",
@@ -3047,15 +2810,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "mexican",
-      "one-pan"
-    ],
+    "tags": ["dairy-free", "gluten-free", "mexican", "one-pan", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 15,
@@ -3114,15 +2869,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days.",
     "computed": {
       "perServing": {
-        "kcal": 236.3,
-        "proteinG": 29.9,
-        "carbsG": 11.9,
-        "fatG": 7.4,
-        "fiberG": 3
+        "kcal": 231.9,
+        "proteinG": 29.8,
+        "carbsG": 11.6,
+        "fatG": 7,
+        "fiberG": 2.8
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "spicy-kidney-bean-soup-mexican",
@@ -3130,16 +2885,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "dairy-free",
-      "freezer-friendly",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "mexican",
-      "one-pot",
-      "vegan"
-    ],
+    "tags": ["dairy-free", "freezer-friendly", "gluten-free", "mexican", "one-pot", "vegan", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 50,
@@ -3202,15 +2948,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 172.5,
-        "proteinG": 10.6,
-        "carbsG": 33.4,
+        "kcal": 170.8,
+        "proteinG": 10.4,
+        "carbsG": 33.1,
         "fatG": 0.6,
-        "fiberG": 12.1
+        "fiberG": 11.9
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "mango-salsa-grilled-chicken",
@@ -3218,15 +2964,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Mexican",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "dairy-free",
-      "gluten-free",
-      "grill",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "mexican"
-    ],
+    "tags": ["dairy-free", "gluten-free", "grill", "mexican", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 15,
@@ -3290,15 +3028,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate chicken up to 3 days; make the salsa fresh.",
     "computed": {
       "perServing": {
-        "kcal": 275.2,
-        "proteinG": 35.1,
-        "carbsG": 15.4,
-        "fatG": 8.1,
-        "fiberG": 2.2
+        "kcal": 270.8,
+        "proteinG": 34.9,
+        "carbsG": 15.2,
+        "fatG": 7.7,
+        "fiberG": 2
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "lean-chicken-burger-patties-light",
@@ -3306,14 +3044,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "baked-not-fried",
-      "dairy-free",
-      "halal",
-      "high-protein",
-      "low-calorie"
-    ],
+    "tags": ["american", "baked-not-fried", "dairy-free", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 20,
@@ -3385,10 +3116,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate cooked patties up to 3 days; freeze uncooked patties up to 1 month.",
     "computed": {
       "perServing": {
-        "kcal": 300.4,
+        "kcal": 299.6,
         "proteinG": 30,
         "carbsG": 13.7,
-        "fatG": 14.4,
+        "fatG": 14.3,
         "fiberG": 2.5
       },
       "unresolved": []
@@ -3401,14 +3132,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "baked-not-fried",
-      "dairy-free",
-      "halal",
-      "high-protein",
-      "kid-friendly"
-    ],
+    "tags": ["american", "baked-not-fried", "dairy-free", "kid-friendly", "high-protein"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 25,
@@ -3468,10 +3192,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; reheat in a hot oven to re-crisp.",
     "computed": {
       "perServing": {
-        "kcal": 358.7,
+        "kcal": 356.1,
         "proteinG": 42.1,
         "carbsG": 18.4,
-        "fatG": 11.9,
+        "fatG": 11.6,
         "fiberG": 3
       },
       "unresolved": []
@@ -3484,16 +3208,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "dairy-free",
-      "freezer-friendly",
-      "gluten-free",
-      "halal",
-      "high-fiber",
-      "high-protein",
-      "one-pot"
-    ],
+    "tags": ["american", "dairy-free", "freezer-friendly", "gluten-free", "one-pot", "high-protein", "high-fiber"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 55,
@@ -3557,15 +3272,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days or freeze up to 2 months.",
     "computed": {
       "perServing": {
-        "kcal": 362.5,
-        "proteinG": 36,
-        "carbsG": 34.9,
+        "kcal": 360.8,
+        "proteinG": 35.9,
+        "carbsG": 34.6,
         "fatG": 9.5,
-        "fiberG": 12.6
+        "fiberG": 12.3
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "salmon-potato-bake",
@@ -3573,15 +3288,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "baked-not-fried",
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "one-pan"
-    ],
+    "tags": ["american", "baked-not-fried", "dairy-free", "gluten-free", "one-pan", "high-protein"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 35,
@@ -3640,15 +3347,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 2 days; reheat gently.",
     "computed": {
       "perServing": {
-        "kcal": 516.4,
-        "proteinG": 33.9,
-        "carbsG": 31.9,
-        "fatG": 27.3,
-        "fiberG": 4.4
+        "kcal": 509.3,
+        "proteinG": 33.7,
+        "carbsG": 31.6,
+        "fatG": 26.7,
+        "fiberG": 4.2
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "chicken-vegetable-sheet-pan",
@@ -3656,16 +3363,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "dairy-free",
-      "gluten-free",
-      "halal",
-      "high-fiber",
-      "high-protein",
-      "meal-prep",
-      "sheet-pan"
-    ],
+    "tags": ["american", "dairy-free", "gluten-free", "meal-prep", "sheet-pan", "high-protein", "high-fiber"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 35,
@@ -3730,10 +3428,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 4 days; great for meal prep.",
     "computed": {
       "perServing": {
-        "kcal": 413.5,
+        "kcal": 408.2,
         "proteinG": 39.7,
         "carbsG": 37.2,
-        "fatG": 12.2,
+        "fatG": 11.6,
         "fiberG": 7.7
       },
       "unresolved": []
@@ -3746,15 +3444,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "baked-not-fried",
-      "dairy-free",
-      "halal",
-      "high-protein",
-      "kid-friendly",
-      "low-calorie"
-    ],
+    "tags": ["american", "baked-not-fried", "dairy-free", "kid-friendly", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 30,
@@ -3821,15 +3511,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days or freeze up to 1 month.",
     "computed": {
       "perServing": {
-        "kcal": 323.8,
-        "proteinG": 31.2,
-        "carbsG": 15.5,
-        "fatG": 15.7,
-        "fiberG": 3
+        "kcal": 321.1,
+        "proteinG": 31,
+        "carbsG": 15.2,
+        "fatG": 15.6,
+        "fiberG": 2.8
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "apple-cinnamon-oatmeal",
@@ -3837,13 +3527,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "american",
-      "high-fiber",
-      "kid-friendly",
-      "one-pot",
-      "vegetarian"
-    ],
+    "tags": ["american", "kid-friendly", "one-pot", "vegetarian", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 12,
@@ -3900,9 +3584,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 2 days; loosen with milk when reheating.",
     "computed": {
       "perServing": {
-        "kcal": 444.3,
-        "proteinG": 17.4,
-        "carbsG": 75.6,
+        "kcal": 455.9,
+        "proteinG": 17.6,
+        "carbsG": 78.5,
         "fatG": 10.6,
         "fiberG": 10.3
       },
@@ -3916,16 +3600,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "dairy-free",
-      "freezer-friendly",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "one-pot"
-    ],
+    "tags": ["american", "dairy-free", "freezer-friendly", "gluten-free", "one-pot", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 20,
     "cookMin": 60,
@@ -4012,13 +3687,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "vegetarian",
-    "tags": [
-      "american",
-      "from-scratch",
-      "high-fiber",
-      "kid-friendly",
-      "vegetarian"
-    ],
+    "tags": ["american", "from-scratch", "kid-friendly", "vegetarian", "high-fiber"],
     "servings": 4,
     "prepMin": 30,
     "cookMin": 20,
@@ -4076,9 +3745,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; refrigerate up to 2 days and loosen with milk when reheating.",
     "computed": {
       "perServing": {
-        "kcal": 375.6,
-        "proteinG": 17.9,
-        "carbsG": 54.2,
+        "kcal": 376.2,
+        "proteinG": 18,
+        "carbsG": 54.3,
         "fatG": 11.7,
         "fiberG": 7.5
       },
@@ -4092,13 +3761,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "lunch",
     "dietCategory": "vegetarian",
-    "tags": [
-      "american",
-      "baked-not-fried",
-      "gluten-free",
-      "low-calorie",
-      "vegetarian"
-    ],
+    "tags": ["american", "baked-not-fried", "gluten-free", "vegetarian", "low-calorie"],
     "servings": 4,
     "prepMin": 10,
     "cookMin": 55,
@@ -4149,15 +3812,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate assembled potatoes up to 2 days; reheat in the oven.",
     "computed": {
       "perServing": {
-        "kcal": 232.9,
-        "proteinG": 10.1,
-        "carbsG": 37.4,
+        "kcal": 231.2,
+        "proteinG": 9.9,
+        "carbsG": 37.1,
         "fatG": 5.4,
-        "fiberG": 4.4
+        "fiberG": 4.2
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "potato-egg-breakfast-hash",
@@ -4165,14 +3828,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "american",
-      "dairy-free",
-      "gluten-free",
-      "low-calorie",
-      "one-pan",
-      "vegetarian"
-    ],
+    "tags": ["american", "dairy-free", "gluten-free", "one-pan", "vegetarian", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 25,
@@ -4229,15 +3885,15 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; refrigerate up to 2 days.",
     "computed": {
       "perServing": {
-        "kcal": 256.8,
-        "proteinG": 10.5,
-        "carbsG": 34.6,
-        "fatG": 8.9,
-        "fiberG": 5.1
+        "kcal": 252.4,
+        "proteinG": 10.4,
+        "carbsG": 34.3,
+        "fatG": 8.6,
+        "fiberG": 4.9
       },
       "unresolved": []
     },
-    "needsReview": false
+    "needsReview": true
   },
   {
     "slug": "creamy-chicken-vegetable-skillet-light",
@@ -4245,14 +3901,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "American",
     "mealType": "dinner",
     "dietCategory": "non_vegetarian",
-    "tags": [
-      "american",
-      "gluten-free",
-      "halal",
-      "high-protein",
-      "low-calorie",
-      "one-pan"
-    ],
+    "tags": ["american", "gluten-free", "one-pan", "high-protein", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 30,
@@ -4324,10 +3973,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; the sauce thickens further on standing.",
     "computed": {
       "perServing": {
-        "kcal": 340.9,
-        "proteinG": 34.6,
-        "carbsG": 33.2,
-        "fatG": 7.4,
+        "kcal": 338.9,
+        "proteinG": 34.7,
+        "carbsG": 33.3,
+        "fatG": 7.1,
         "fiberG": 5.4
       },
       "unresolved": []
@@ -4340,13 +3989,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-fiber",
-      "high-protein",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "no-cook", "vegetarian", "high-protein", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -4401,9 +4044,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; prep fruit the night before if needed.",
     "computed": {
       "perServing": {
-        "kcal": 483.5,
+        "kcal": 493.1,
         "proteinG": 24.4,
-        "carbsG": 62.3,
+        "carbsG": 64.9,
         "fatG": 17.2,
         "fiberG": 10.3
       },
@@ -4417,12 +4060,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "gluten-free",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "gluten-free", "no-cook", "vegetarian"],
     "servings": 2,
     "prepMin": 15,
     "cookMin": 10,
@@ -4484,14 +4122,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "gluten-free",
-      "high-fiber",
-      "high-protein",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "gluten-free", "no-cook", "vegetarian", "high-protein", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -4544,9 +4175,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; the base keeps 1 day refrigerated.",
     "computed": {
       "perServing": {
-        "kcal": 438.4,
-        "proteinG": 23.5,
-        "carbsG": 53.3,
+        "kcal": 442.6,
+        "proteinG": 23.6,
+        "carbsG": 54.4,
         "fatG": 17.3,
         "fiberG": 7.8
       },
@@ -4560,12 +4191,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-fiber",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "no-cook", "vegetarian", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -4612,9 +4238,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh.",
     "computed": {
       "perServing": {
-        "kcal": 363.1,
-        "proteinG": 18.3,
-        "carbsG": 55.7,
+        "kcal": 367.3,
+        "proteinG": 18.4,
+        "carbsG": 56.7,
         "fatG": 9.4,
         "fiberG": 6.7
       },
@@ -4628,14 +4254,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-fiber",
-      "make-ahead",
-      "meal-prep",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "make-ahead", "meal-prep", "no-cook", "vegetarian", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -4683,9 +4302,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; add fresh fruit at serving time.",
     "computed": {
       "perServing": {
-        "kcal": 358.2,
-        "proteinG": 15.5,
-        "carbsG": 63.7,
+        "kcal": 369.3,
+        "proteinG": 15.7,
+        "carbsG": 66.5,
         "fatG": 6.1,
         "fiberG": 9.5
       },
@@ -4699,14 +4318,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-fiber",
-      "make-ahead",
-      "meal-prep",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "make-ahead", "meal-prep", "no-cook", "vegetarian", "high-protein", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -4758,9 +4370,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days.",
     "computed": {
       "perServing": {
-        "kcal": 437.8,
-        "proteinG": 19.9,
-        "carbsG": 61.3,
+        "kcal": 441.7,
+        "proteinG": 20,
+        "carbsG": 62.3,
         "fatG": 14.3,
         "fiberG": 10
       },
@@ -4774,12 +4386,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-protein",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "no-cook", "vegetarian", "high-protein"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 5,
@@ -4822,9 +4429,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best assembled fresh; components keep 2 days refrigerated.",
     "computed": {
       "perServing": {
-        "kcal": 370.1,
+        "kcal": 379.6,
         "proteinG": 23.7,
-        "carbsG": 36.6,
+        "carbsG": 39.2,
         "fatG": 15.4,
         "fiberG": 5.1
       },
@@ -4838,13 +4445,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "snack",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "gluten-free",
-      "high-protein",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "gluten-free", "no-cook", "vegetarian", "high-protein"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -4886,9 +4487,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh; keeps 1 day refrigerated.",
     "computed": {
       "perServing": {
-        "kcal": 358.1,
+        "kcal": 361.3,
         "proteinG": 21.6,
-        "carbsG": 36.5,
+        "carbsG": 37.4,
         "fatG": 15.6,
         "fiberG": 4.9
       },
@@ -4902,12 +4503,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-protein",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "no-cook", "vegetarian", "high-protein"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -4954,9 +4550,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Best eaten fresh.",
     "computed": {
       "perServing": {
-        "kcal": 428.3,
+        "kcal": 431.5,
         "proteinG": 25.9,
-        "carbsG": 38.2,
+        "carbsG": 39.1,
         "fatG": 20.9,
         "fiberG": 5.5
       },
@@ -4970,13 +4566,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-fiber",
-      "kid-friendly",
-      "low-calorie",
-      "vegetarian"
-    ],
+    "tags": ["continental", "kid-friendly", "vegetarian", "high-fiber", "low-calorie"],
     "servings": 4,
     "prepMin": 15,
     "cookMin": 20,
@@ -5033,10 +4623,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days; reheat in a dry pan or toaster.",
     "computed": {
       "perServing": {
-        "kcal": 280.4,
+        "kcal": 285.1,
         "proteinG": 12.7,
-        "carbsG": 49.9,
-        "fatG": 5.1,
+        "carbsG": 51.3,
+        "fatG": 5,
         "fiberG": 6.2
       },
       "unresolved": []
@@ -5049,16 +4639,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "snack",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "gluten-free",
-      "high-fiber",
-      "low-calorie",
-      "make-ahead",
-      "meal-prep",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "gluten-free", "make-ahead", "meal-prep", "no-cook", "vegetarian", "high-fiber", "low-calorie"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -5096,10 +4677,10 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Refrigerate up to 3 days.",
     "computed": {
       "perServing": {
-        "kcal": 260,
-        "proteinG": 11.1,
-        "carbsG": 42.6,
-        "fatG": 6.8,
+        "kcal": 271.6,
+        "proteinG": 11.3,
+        "carbsG": 45.5,
+        "fatG": 6.9,
         "fiberG": 8.8
       },
       "unresolved": []
@@ -5112,13 +4693,7 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "cuisine": "Continental",
     "mealType": "breakfast",
     "dietCategory": "vegetarian",
-    "tags": [
-      "continental",
-      "high-fiber",
-      "meal-prep",
-      "no-cook",
-      "vegetarian"
-    ],
+    "tags": ["continental", "meal-prep", "no-cook", "vegetarian", "high-fiber"],
     "servings": 2,
     "prepMin": 10,
     "cookMin": 0,
@@ -5170,9 +4745,9 @@ export const WESTERN_RECIPES: RecipeSeed[] = [
     "storage": "Keep the dry mix up to 1 month in a sealed jar; add milk and fruit fresh.",
     "computed": {
       "perServing": {
-        "kcal": 402.5,
-        "proteinG": 16.8,
-        "carbsG": 65.7,
+        "kcal": 407.2,
+        "proteinG": 16.9,
+        "carbsG": 66.8,
         "fatG": 10.2,
         "fiberG": 9.3
       },

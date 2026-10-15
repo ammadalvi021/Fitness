@@ -8,6 +8,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { computeRecipe } from '../../core/src/recipe-engine.js';
+import { INGREDIENTS } from './seed-ingredients.js';
 import { ASIAN_RECIPES } from './seed-recipes-asian.js';
 
 const AVOID_SLUGS = new Set([
@@ -101,9 +103,18 @@ describe('honesty contract: computed nutrition', () => {
     }
   });
 
-  it('needsReview is true exactly when unresolved ingredients exist', () => {
+  it('needsReview is true exactly when the v21.2 engine reports a gap', () => {
+    // v21.2: unresolved names OR uninterpretable quantities / unknown grams
+    // (incomplete) flag review — never silently partial.
     for (const r of ASIAN_RECIPES) {
-      expect(r.needsReview, `${r.slug}: needsReview`).toBe(r.computed.unresolved.length > 0);
+      const fresh = computeRecipe(
+        r.ingredients.map((i) => ({ name: i.name, quantity: i.quantity })),
+        r.servings,
+        INGREDIENTS,
+      );
+      expect(r.needsReview, `${r.slug}: needsReview`).toBe(
+        fresh.unresolved.length > 0 || fresh.incomplete.length > 0,
+      );
     }
   });
 
@@ -136,6 +147,24 @@ describe('honesty contract: computed nutrition', () => {
       if (r.tags.includes('high-protein')) expect(p.proteinG, `${r.slug}`).toBeGreaterThanOrEqual(20);
       if (r.tags.includes('high-fiber')) expect(p.fiberG, `${r.slug}`).toBeGreaterThanOrEqual(6);
       if (r.tags.includes('low-calorie')) expect(p.kcal, `${r.slug}`).toBeLessThanOrEqual(350);
+    }
+  });
+});
+
+describe('v21.2 P8 claims policy', () => {
+  it("no 'halal' / 'halal-friendly' tag without a recorded human review", () => {
+    for (const r of ASIAN_RECIPES) {
+      expect(r.tags.includes('halal'), `${r.slug} halal`).toBe(false);
+      expect(r.tags.includes('halal-friendly'), `${r.slug} halal-friendly`).toBe(false);
+      expect(r.halalReview ?? null, `${r.slug} halalReview`).toBeNull();
+    }
+  });
+
+  it('allergen lists are name-derived (caveat applies)', () => {
+    for (const r of ASIAN_RECIPES) {
+      expect(r.allergenBasis ?? 'declared-from-ingredient-names').toBe(
+        'declared-from-ingredient-names',
+      );
     }
   });
 });

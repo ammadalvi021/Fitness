@@ -212,6 +212,12 @@ model Food {
   brand         String?
   servingSize   Float
   servingUnit   String
+  // V21.2: canonical grams per serving. NULL until seeded/backfilled.
+  // Fixes per-100-g math for count servings (chapati servingSize: 1) and
+  // volume servings (milk servingSize: 250 ml) — `100 / servingSize` was
+  // only valid when servingSize was grams. Diary serving semantics are
+  // unchanged (diary scales per-serving nutrients, never this column).
+  servingWeightG Float?
   kcal          Float
   proteinG      Float
   carbsG        Float
@@ -260,6 +266,10 @@ model DiaryEntry {
   scanId         String?
   recipeId       String?
   idempotencyKey String?
+  // V21.4: durable indicator that this entry was logged with explicitly
+  // acknowledged incomplete (partial) recipe nutrition. NULL/false =
+  // complete values. Set server-side at log time only.
+  nutritionPartial Boolean?
   // V20: micro snapshot at log time (closed MicroKey shape, standard
   // units; absent key = "not tracked"). Entries logged from USDA web
   // results carry their micros; everything else is null.
@@ -358,7 +368,19 @@ model Recipe {
   // "curated" | "ai" | "user"
   source            String
   verified          Boolean  @default(false)
+  // V21.3: JSON evidence for the verified/reviewed data-quality tiers
+  // (canonical shapes documented in the migration file and in
+  // packages/core/src/recipe-claims.ts). NULL = no evidence recorded.
+  verificationEvidence Json?
+  reviewEvidence        Json?
   allergens         String[] @default([])
+  // V21.4: true when the `allergens` list was produced by ingredient-name
+  // screening (custom-recipe creation endpoint, v21.4+). False = screening
+  // was never recorded (all pre-v21.4 rows, incl. all 270 seed recipes) —
+  // an empty list on an unscreened recipe must NOT render as "no allergens".
+  // Screening is still name-derived only: never a certified allergen
+  // analysis (ALLERGEN_CAVEAT still required wherever the list appears).
+  allergenScreened  Boolean  @default(false)
   // V18: user-created private home recipes
   userId            String?
   isPrivate         Boolean  @default(false)
@@ -372,10 +394,33 @@ model Recipe {
   cuisine      Cuisine?     @relation(fields: [cuisineId], references: [id], onDelete: SetNull)
   diaryEntries DiaryEntry[]
   user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  aliases      RecipeAlias[]
 
   @@index([cuisineId])
   @@index([dietCategory])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// V21.2: persisted recipe alias names (English, Urdu script, Roman Urdu)
+// ---------------------------------------------------------------------------
+// Seed aliases were previously carried on the seed objects but never
+// persisted; this table stores them so `GET /api/recipes?q=` can match
+// titles AND aliases. One row per (recipe, normalized alias string);
+// language is a hint only ('en' | 'ur' | 'roman-ur'), never authoritative.
+
+model RecipeAlias {
+  id              String   @id @default(cuid())
+  recipeId        String
+  alias           String
+  normalizedAlias String
+  language        String?
+  createdAt       DateTime @default(now())
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, normalizedAlias])
+  @@index([normalizedAlias])
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,23 @@ import {
   LuxButton,
   MetricCard,
 } from '@/components/luxury';
+import { IncompleteNutritionAck } from '@/components/incomplete-nutrition-ack';
+import AdminRecipeReview from '@/components/AdminRecipeReview';
+import {
+  blocksMealPlanAddition,
+  partialTotalsSummary,
+  requiresAcknowledgement,
+  unresolvedIngredientNames,
+} from '@fitfusion/core';
+import {
+  buildPlanMealAddition,
+  buildRecipeDiaryPayload,
+  clampServings,
+  nutritionForServings,
+  scaleIngredientGrams,
+  yieldFactor,
+} from '@/lib/recipe-servings';
+import { recipeQualityTier, tierBadge, ALLERGEN_CAVEAT } from '@/lib/recipe-tier';
 import {
   allergenHits,
   formatDayLabel,
@@ -39,11 +56,23 @@ import {
 
 /* ---------- shapes ---------- */
 
+/**
+ * Serving contract (v21.2) — do NOT double-scale:
+ * - `perServing` = nutrients for ONE recipe portion. Nutrition for N servings
+ *   = perServing × N (never × N/servings again).
+ * - `servings` = the recipe's ORIGINAL yield; `ingredients[].grams` are
+ *   quantities for that original yield — displayed quantities scale by
+ *   (selectedYield / servings).
+ */
 interface RecipeIngredient {
   name: string;
   quantity: string;
   grams?: number;
   substitutions?: string[] | null;
+  // V21.3: per-row nutrition resolution status stored by the server for
+  // custom recipes ('unknown' | 'incomplete' rows contribute 0). Absent on
+  // older seed rows — the needsReview flag still carries the signal.
+  nutritionStatus?: string | null;
 }
 
 interface RecipeDetail {
@@ -63,10 +92,53 @@ interface RecipeDetail {
   imageUrl?: string | null;
   source?: string | null;
   verified: boolean;
+  // v21.3: server-computed canonical tier + display summaries (the API is
+  // the tier authority; the client never re-derives tiers from partial data).
+  tier?: 'calculated-estimate' | 'reviewed' | 'verified' | null;
+  reviewInfo?: { reviewer: string; reviewedAt: string } | null;
+  verificationInfo?: { checkedBy: string; checkedAt: string; method: string } | null;
+  // V21.2: true when some ingredient's nutrition is unknown/incomplete —
+  // the shown totals are partial, never silently complete.
+  needsReview: boolean;
   allergens: string[];
+  // V21.4: true when the allergen list was produced by ingredient-name
+  // screening. Optional here for backward compatibility with cached/older
+  // API shapes — absence is treated as unscreened (false).
+  allergenScreened?: boolean;
   substitutions?: string[] | Record<string, string> | null;
   storage?: string | null;
   reheating?: string | null;
+}
+
+function isTier(v: unknown): v is 'calculated-estimate' | 'reviewed' | 'verified' {
+  return v === 'calculated-estimate' || v === 'reviewed' || v === 'verified';
+}
+
+/** Display-safe evidence summary shapes (v21.3 evidence API contract). */
+function asReviewInfo(v: unknown): { reviewer: string; reviewedAt: string } | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.reviewer !== 'string' || typeof o.reviewedAt !== 'string') return null;
+  return { reviewer: o.reviewer, reviewedAt: o.reviewedAt };
+}
+
+function asVerificationInfo(
+  v: unknown,
+): { checkedBy: string; checkedAt: string; method: string } | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const o = v as Record<string, unknown>;
+  if (
+    typeof o.checkedBy !== 'string' ||
+    typeof o.checkedAt !== 'string' ||
+    typeof o.method !== 'string'
+  )
+    return null;
+  return { checkedBy: o.checkedBy, checkedAt: o.checkedAt, method: o.method };
+}
+
+/** Display the date part of an ISO date string (deterministic, no locale shift). */
+function shortDate(iso: string): string {
+  return iso.includes('T') ? iso.slice(0, iso.indexOf('T')) : iso;
 }
 
 function normalizeRecipe(r: Record<string, unknown>): RecipeDetail {
@@ -88,6 +160,8 @@ function normalizeRecipe(r: Record<string, unknown>): RecipeDetail {
       substitutions: Array.isArray(o.substitutions)
         ? (o.substitutions as unknown[]).map(String)
         : null,
+      nutritionStatus:
+        typeof o.nutritionStatus === 'string' ? o.nutritionStatus : undefined,
     };
   });
   const rawSteps = Array.isArray(r.instructions) ? (r.instructions as unknown[]) : [];
@@ -121,6 +195,10 @@ function normalizeRecipe(r: Record<string, unknown>): RecipeDetail {
     imageUrl: typeof r.imageUrl === 'string' ? r.imageUrl : null,
     source: typeof r.source === 'string' ? r.source : null,
     verified: Boolean(r.verified),
+    tier: isTier(r.tier) ? r.tier : null,
+    reviewInfo: asReviewInfo(r.reviewInfo),
+    verificationInfo: asVerificationInfo(r.verificationInfo),
+    needsReview: Boolean(r.needsReview),
     allergens: Array.isArray(r.allergens) ? (r.allergens as unknown[]).map(String) : [],
     substitutions: (r.substitutions as RecipeDetail['substitutions']) ?? null,
     storage: typeof r.storage === 'string' ? r.storage : null,
@@ -154,8 +232,16 @@ export default function RecipeDetailPage() {
   const [favBusy, setFavBusy] = useState(false);
 
   const [logOpen, setLogOpen] = useState(false);
+  // V21.3: incomplete-nutrition acknowledgement — shown BEFORE the log form
+  // when the recipe's nutrition is partial. A bare dismiss never logs.
+  const [ackOpen, setAckOpen] = useState(false);
+  // V21.4: true only when the user explicitly confirmed the acknowledgement
+  // dialog this log session — sent to the API as nutritionAck (the API
+  // enforces the ack server-side; this is the client half).
+  const [ackConfirmed, setAckConfirmed] = useState(false);
   const [logDate, setLogDate] = useState(todayYMD());
   const [logMeal, setLogMeal] = useState<MealType>('dinner');
+  const [logServings, setLogServings] = useState(1); // servings EATEN — always defaults to 1
   const [logBusy, setLogBusy] = useState(false);
   const [logDone, setLogDone] = useState(false);
 
@@ -173,19 +259,21 @@ export default function RecipeDetailPage() {
 
   /* ---------------- load ---------------- */
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await api<unknown>(`/api/recipes/${encodeURIComponent(slug)}`);
-        const raw = unwrapObject<Record<string, unknown>>(data, 'recipe') ?? (data as Record<string, unknown>);
-        const normalized = normalizeRecipe(raw);
-        setRecipe(normalized);
-        setServings(normalized.servings);
-      } catch (e) {
-        setLoadError(e instanceof ApiError ? e.message : 'Could not load this recipe.');
-      }
-    })();
+  const reloadRecipe = useCallback(async () => {
+    try {
+      const data = await api<unknown>(`/api/recipes/${encodeURIComponent(slug)}`);
+      const raw = unwrapObject<Record<string, unknown>>(data, 'recipe') ?? (data as Record<string, unknown>);
+      const normalized = normalizeRecipe(raw);
+      setRecipe(normalized);
+      setServings(normalized.servings);
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : 'Could not load this recipe.');
+    }
   }, [slug]);
+
+  useEffect(() => {
+    void reloadRecipe();
+  }, [reloadRecipe]);
 
   useEffect(() => {
     (async () => {
@@ -223,22 +311,33 @@ export default function RecipeDetailPage() {
     })();
   }, [recipe]);
 
-  const factor = useMemo(
-    () => (recipe ? Math.max(0.25, servings) / Math.max(0.25, recipe.servings) : 1),
-    [recipe, servings],
+  /* Serving math (contract in @/lib/recipe-servings):
+   * - batchServings: the yield being cooked (page selector, defaults to the
+   *   recipe's original yield).
+   * - ingredientFactor: scales INGREDIENT QUANTITIES ONLY
+   *   (selectedYield / originalYield) — never applied to nutrients.
+   * - scaled: nutrition totals for the selected yield = perServing × N.
+   */
+  const batchServings = useMemo(() => clampServings(servings), [servings]);
+  const ingredientFactor = useMemo(
+    () => (recipe ? yieldFactor(batchServings, recipe.servings) : 1),
+    [recipe, batchServings],
   );
   const scaled: Nutrients | null = useMemo(
-    () =>
-      recipe
-        ? {
-            kcal: recipe.perServing.kcal * factor,
-            proteinG: recipe.perServing.proteinG * factor,
-            carbsG: recipe.perServing.carbsG * factor,
-            fatG: recipe.perServing.fatG * factor,
-            fiberG: recipe.perServing.fiberG * factor,
-          }
-        : null,
-    [recipe, factor],
+    () => (recipe ? nutritionForServings(recipe.perServing, batchServings) : null),
+    [recipe, batchServings],
+  );
+  /* "Servings eaten" preview for the diary modal: per-serving × servings eaten. */
+  const logPreview: Nutrients | null = useMemo(
+    () => (recipe ? nutritionForServings(recipe.perServing, logServings) : null),
+    [recipe, logServings],
+  );
+  // V21.3: ingredient rows whose nutrition contributed 0 ('unknown' |
+  // 'incomplete'). Empty for older rows without per-row status — the
+  // summary copy then falls back to the generic "unknown nutrition" wording.
+  const unresolvedNames: string[] = useMemo(
+    () => (recipe ? unresolvedIngredientNames(recipe.ingredients) : []),
+    [recipe],
   );
 
   const allergenHitsAll = useMemo(() => {
@@ -279,29 +378,29 @@ export default function RecipeDetailPage() {
   }
 
   async function handleLog() {
-    if (!recipe || !scaled) return;
+    if (!recipe) return;
     setLogBusy(true);
     setError(null);
     try {
-      const s = Math.max(0.25, servings);
+      // Servings EATEN (modal selector, defaults to 1) — never the whole
+      // batch. buildRecipeDiaryPayload emits the FLAT DiaryEntrySchema shape
+      // with totals = per-serving × servingsEaten.
+      const body = buildRecipeDiaryPayload({
+        recipeId: recipe.id,
+        title: recipe.title,
+        servingsEaten: logServings,
+        perServing: recipe.perServing,
+        date: logDate,
+        mealType: logMeal,
+      });
+      // V21.4: forward the explicit acknowledgement the user confirmed in
+      // the ack dialog (server enforces it for partial recipes; sending it
+      // for complete recipes is harmless and ignored).
+      if (ackConfirmed) body.nutritionAck = true;
       await api('/api/diary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': newIdempotencyKey() },
-        body: {
-          date: logDate,
-          mealType: logMeal,
-          recipeId: recipe.id,
-          customName: recipe.title,
-          servings: s,
-          nutrients: {
-            kcal: round1(scaled.kcal),
-            proteinG: round1(scaled.proteinG),
-            carbsG: round1(scaled.carbsG),
-            fatG: round1(scaled.fatG),
-            fiberG: round1(scaled.fiberG),
-          },
-          source: 'recipe',
-        },
+        body,
       });
       setLogDone(true);
     } catch (e) {
@@ -315,11 +414,11 @@ export default function RecipeDetailPage() {
     if (!recipe) return '';
     const lines = recipe.ingredients.map((i) => {
       const qty = i.quantity ? ` — ${i.quantity}` : '';
-      const grams = i.grams != null ? ` (≈${Math.round(i.grams * factor)} g for ${round1(Math.max(0.25, servings))} servings)` : '';
+      const grams = i.grams != null ? ` (≈${scaleIngredientGrams(i.grams, ingredientFactor)} g for ${round1(batchServings)} servings)` : '';
       return `• ${i.name}${qty}${grams}`;
     });
-    return `${recipe.title} — ingredients for ${round1(Math.max(0.25, servings))} servings\n\n${lines.join('\n')}`;
-  }, [recipe, factor, servings]);
+    return `${recipe.title} — ingredients for ${round1(batchServings)} servings\n\n${lines.join('\n')}`;
+  }, [recipe, ingredientFactor, batchServings]);
 
   async function copyShopping() {
     try {
@@ -363,34 +462,31 @@ export default function RecipeDetailPage() {
 
   function addToPlan() {
     if (!recipe || !planChoice) return;
-    const s = Math.max(0.25, servings);
-    const meal = {
-      id: `recipe-${recipe.id}`,
-      name: recipe.title,
-      mealType: planMealType,
-      ingredients: recipe.ingredients.map((i) => ({
-        name: i.name,
-        quantity: i.quantity,
-        grams: i.grams,
-      })),
-      nutrients: recipe.perServing, // per 1 serving (contract)
-      servings: s,
-      scaledNutrients: {
-        kcal: round1(recipe.perServing.kcal * (s / recipe.servings)),
-        proteinG: round1(recipe.perServing.proteinG * (s / recipe.servings)),
-        carbsG: round1(recipe.perServing.carbsG * (s / recipe.servings)),
-        fatG: round1(recipe.perServing.fatG * (s / recipe.servings)),
-        fiberG: round1(recipe.perServing.fiberG * (s / recipe.servings)),
+    // V21.3: incomplete recipes are BLOCKED from meal plans (not merely
+    // acknowledged) — partial numbers would fold silently into the plan's
+    // daily auto-totals. The button is disabled; this is defense in depth.
+    if (blocksMealPlanAddition(recipe.needsReview)) return;
+    // nutrients = per 1 serving; scaledNutrients = per-serving × servings
+    // (never × servings/yield — the double-scaling bug). Ingredient grams are
+    // scaled to the selected yield; the plans page re-derives the same way.
+    const meal = buildPlanMealAddition(
+      {
+        id: recipe.id,
+        title: recipe.title,
+        servings: recipe.servings,
+        perServing: recipe.perServing,
+        ingredients: recipe.ingredients,
+        prepMin: recipe.prepMin,
+        cookMin: recipe.cookMin,
+        instructions: recipe.instructions,
+        tags: recipe.tags,
+        cuisine: recipe.cuisine,
+        dietCategory: recipe.dietCategory,
+        imageUrl: recipe.imageUrl,
       },
-      prepMin: recipe.prepMin,
-      cookMin: recipe.cookMin,
-      instructions: recipe.instructions,
-      tags: recipe.tags,
-      cuisine: recipe.cuisine,
-      dietCategory: recipe.dietCategory,
-      labels: recipe.tags,
-      imageUrl: recipe.imageUrl,
-    };
+      batchServings,
+      planMealType,
+    );
     try {
       const key = `fitfusion.planAdditions.${planChoice}`;
       const raw = localStorage.getItem(key);
@@ -429,6 +525,12 @@ export default function RecipeDetailPage() {
     );
   }
 
+  // Data-quality tier badge (v21.3 claims policy). The API is the tier
+  // authority: `recipe.tier` was computed server-side from full evidence.
+  // The existing needsReview "Nutrition incomplete" banner above is kept as
+  // the awaiting-review indicator (not duplicated as a badge here).
+  const tierInfo = tierBadge(recipeQualityTier(recipe));
+
   return (
     <div className="anim-page-enter mx-auto max-w-3xl space-y-6 p-4 pb-24">
       <div className="mb-2">
@@ -437,6 +539,20 @@ export default function RecipeDetailPage() {
           <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
             {recipe.cuisine}
           </p>
+        )}
+        {recipe.needsReview && (
+          <div
+            role="status"
+            className="mt-2 rounded-xl border p-3 text-sm"
+            style={{
+              borderColor: 'color-mix(in srgb, var(--warning, #b45309) 45%, transparent)',
+              backgroundColor: 'color-mix(in srgb, var(--warning, #b45309) 10%, transparent)',
+              color: 'var(--text)',
+            }}
+          >
+            <strong>Nutrition incomplete.</strong> Some ingredients had unknown
+            nutrition and contribute 0 to the totals shown below.
+          </div>
         )}
       </div>
 
@@ -478,16 +594,32 @@ export default function RecipeDetailPage() {
 
       <GlassPanel className="p-6">
         <div className="flex flex-wrap gap-1">
-          {recipe.verified ? (
-            <LuxBadge tone="success">Verified</LuxBadge>
-          ) : recipe.source === 'curated' ? (
-            <LuxBadge>Curated</LuxBadge>
-          ) : null}
+          <LuxBadge tone={tierInfo.tone}>{tierInfo.label}</LuxBadge>
+          {recipe.source === 'curated' && <LuxBadge>Curated</LuxBadge>}
           {isAi && <LuxBadge tone="accent">AI-generated</LuxBadge>}
           {recipe.dietCategory === 'vegetarian' && <LuxBadge tone="success">Vegetarian</LuxBadge>}
           {recipe.dietCategory === 'non_vegetarian' && <LuxBadge>Non-vegetarian</LuxBadge>}
           {recipe.difficulty && <LuxBadge>{recipe.difficulty}</LuxBadge>}
         </div>
+        {/* v21.3: who checked this recipe, when — the evidence provenance line. */}
+        {(recipe.verificationInfo || recipe.reviewInfo) && (
+          <p className="t-meta mt-2" style={{ color: 'var(--text-secondary)' }}>
+            {recipe.verificationInfo ? (
+              <>
+                Verified by {recipe.verificationInfo.checkedBy} ·{' '}
+                {shortDate(recipe.verificationInfo.checkedAt)} ·{' '}
+                {recipe.verificationInfo.method}
+              </>
+            ) : (
+              recipe.reviewInfo && (
+                <>
+                  Reviewed by {recipe.reviewInfo.reviewer} ·{' '}
+                  {shortDate(recipe.reviewInfo.reviewedAt)}
+                </>
+              )
+            )}
+          </p>
+        )}
 
         {recipe.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -524,7 +656,7 @@ export default function RecipeDetailPage() {
             style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-secondary)' }}
           >
             <p className="t-body font-semibold">
-              Nutrition for <span className="t-numeral">{round1(Math.max(0.25, servings))}</span> serving{servings === 1 ? '' : 's'}
+              Nutrition for <span className="t-numeral">{round1(batchServings)}</span> serving{batchServings === 1 ? '' : 's'}
               {isAi && <span className="t-meta"> — AI estimates</span>}
             </p>
             <p className="t-body mt-1">
@@ -544,6 +676,25 @@ export default function RecipeDetailPage() {
             ))}
           </div>
         )}
+
+        {/* Allergen provenance (v21.2 claims policy, v21.4 screening status):
+            the recipe allergen list is declared from ingredient names —
+            name-derived screening, never a certified analysis. The caveat is
+            required wherever allergen info appears. V21.4: an empty list
+            renders as "none detected" ONLY when screening was recorded
+            (allergenScreened=true); when screening was never performed the
+            UI says so and makes NO claim about allergen absence. */}
+        <div className="mt-3">
+          <p className="t-body font-medium">Allergens</p>
+          <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+            {recipe.allergens.length > 0
+              ? `Declared from ingredient names: ${recipe.allergens.join(', ')}.`
+              : recipe.allergenScreened === true
+                ? 'None detected from ingredient names.'
+                : 'Allergen screening has not been performed for this recipe.'}
+          </p>
+          <p className="t-meta mt-1">{ALLERGEN_CAVEAT}</p>
+        </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
           <LuxButton
@@ -567,7 +718,19 @@ export default function RecipeDetailPage() {
               </>
             )}
           </LuxButton>
-          <LuxButton onClick={() => { setLogDone(false); setLogOpen(true); }}>
+          <LuxButton onClick={() => {
+            if (!recipe) return;
+            setLogDone(false);
+            setLogServings(1);
+            // V21.4: a fresh acknowledgement is required for every log
+            // session — a previous confirm never carries over.
+            setAckConfirmed(false);
+            // V21.3: when the recipe's nutrition is partial, an explicit
+            // acknowledgement is required BEFORE the log form opens. A bare
+            // dismiss of that dialog never logs.
+            if (requiresAcknowledgement(recipe.needsReview)) setAckOpen(true);
+            else setLogOpen(true);
+          }}>
             Log to diary
           </LuxButton>
           <LuxButton variant="secondary" onClick={() => setShopOpen(true)}>
@@ -598,8 +761,8 @@ export default function RecipeDetailPage() {
                     {ing.quantity && <span style={{ color: 'var(--text-secondary)' }}> — {ing.quantity}</span>}
                     {ing.grams != null && (
                       <span className="t-meta block">
-                        ≈ <span className="t-numeral">{Math.round(ing.grams * factor)}</span> g for{' '}
-                        <span className="t-numeral">{round1(Math.max(0.25, servings))}</span> servings
+                        ≈ <span className="t-numeral">{scaleIngredientGrams(ing.grams, ingredientFactor)}</span> g for{' '}
+                        <span className="t-numeral">{round1(batchServings)}</span> servings
                       </span>
                     )}
                     {hit.length > 0 && (
@@ -684,9 +847,36 @@ export default function RecipeDetailPage() {
         ) : (
           <div className="space-y-3">
             <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
-              <span className="t-numeral">{round1(Math.max(0.25, servings))}</span> serving{servings === 1 ? '' : 's'} ·{' '}
-              <span className="t-numeral">{scaled ? Math.round(scaled.kcal) : 0}</span> kcal{isAi ? ' (estimate)' : ''}.
+              How many servings did you eat? Defaults to 1 — the recipe makes{' '}
+              <span className="t-numeral">{round1(batchServings)}</span>, but you only log what you ate.
             </p>
+            <div>
+              <label htmlFor="log-servings" className="t-body block font-medium">
+                Servings eaten
+              </label>
+              <Input
+                id="log-servings"
+                type="number"
+                min={0.25}
+                step={0.25}
+                value={String(logServings)}
+                onChange={(e) => setLogServings(clampServings(num(e.target.value, 1)))}
+                className="min-h-[44px] w-32"
+              />
+            </div>
+            <p className="t-body" style={{ color: 'var(--text-secondary)' }}>
+              <span className="t-numeral">{round1(clampServings(logServings))}</span> serving{clampServings(logServings) === 1 ? '' : 's'} ·{' '}
+              <span className="t-numeral">{logPreview ? Math.round(logPreview.kcal) : 0}</span> kcal{isAi ? ' (estimate)' : ''} ·{' '}
+              P <span className="t-numeral">{logPreview ? round1(logPreview.proteinG) : 0}</span> g ·{' '}
+              C <span className="t-numeral">{logPreview ? round1(logPreview.carbsG) : 0}</span> g ·{' '}
+              F <span className="t-numeral">{logPreview ? round1(logPreview.fatG) : 0}</span> g
+            </p>
+            {/* V21.3 (action-time): the totals being logged are partial. */}
+            {recipe.needsReview && (
+              <p className="t-body font-medium" style={{ color: 'var(--warning, #b45309)' }}>
+                Totals are {partialTotalsSummary(unresolvedNames)}.
+              </p>
+            )}
             {allergenHitsAll.length > 0 && (
               <div
                 role="alert"
@@ -742,6 +932,21 @@ export default function RecipeDetailPage() {
           </div>
         )}
       </Modal>
+
+      {/* ------- incomplete-nutrition acknowledgement (v21.3, action-time).
+            Shown BEFORE the log form when the recipe's nutrition is partial.
+            A bare dismiss / Escape / X only closes this dialog — it never logs. */}
+      <IncompleteNutritionAck
+        open={ackOpen}
+        unresolvedNames={unresolvedNames}
+        onConfirm={() => {
+          setAckOpen(false);
+          // V21.4: explicit confirm — the log POST carries nutritionAck.
+          setAckConfirmed(true);
+          setLogOpen(true);
+        }}
+        onCancel={() => setAckOpen(false)}
+      />
 
       {/* ------- shopping list modal ------- */}
       <Modal open={shopOpen} onClose={() => setShopOpen(false)} title="Shopping list">
@@ -862,12 +1067,41 @@ export default function RecipeDetailPage() {
                 Contains your allergen{allergenHitsAll.length > 1 ? 's' : ''}: {allergenHitsAll.join(', ')}.
               </div>
             )}
-            <LuxButton className="w-full" onClick={addToPlan}>
+            {/* V21.3: incomplete recipes are BLOCKED from meal plans (not merely
+                acknowledged) — the partial numbers would fold silently into
+                the plan's daily auto-totals. Complete the nutrition review
+                first, or log the recipe to your diary with acknowledgement. */}
+            {recipe.needsReview && (
+              <div
+                id="plan-block-note"
+                role="alert"
+                className="rounded-xl border p-3 text-sm"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--warning, #b45309) 45%, transparent)',
+                  backgroundColor: 'color-mix(in srgb, var(--warning, #b45309) 10%, transparent)',
+                  color: 'var(--text)',
+                }}
+              >
+                <strong>This recipe can&apos;t be added to a meal plan yet.</strong>{' '}
+                Its nutrition is {partialTotalsSummary(unresolvedNames)} — adding
+                it would silently fold those partial numbers into your plan&apos;s
+                daily totals. Complete the nutrition review first.
+              </div>
+            )}
+            <LuxButton
+              className="w-full"
+              onClick={addToPlan}
+              disabled={recipe.needsReview}
+              aria-describedby={recipe.needsReview ? 'plan-block-note' : undefined}
+            >
               Add to plan
             </LuxButton>
           </div>
         )}
       </Modal>
+
+      {/* v21.3: admin-only review panel — renders nothing for non-admins. */}
+      <AdminRecipeReview slug={recipe.slug} onChanged={() => void reloadRecipe()} />
 
       <p className="t-meta flex items-center gap-1.5">
         <Clock size={13} aria-hidden="true" />

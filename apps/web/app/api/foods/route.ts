@@ -108,6 +108,10 @@ export async function GET(req: NextRequest) {
         : null,
       servingSize: f.servingSize,
       servingUnit: f.servingUnit,
+      // V21.2: canonical grams per serving (null = unknown). The client
+      // derives the per-100-g factor from this via the shared core helper —
+      // never 100 / servingSize.
+      servingWeightG: f.servingWeightG ?? null,
       perServing: {
         kcal: f.kcal,
         proteinG: f.proteinG,

@@ -46,7 +46,7 @@ new `/billing/success` + `/billing/cancelled`) · `migrate status` → **up to
 date** (3/3) · live: `/api/health` 200 `ok:true`; paid plan w/o payment → 402;
 free downgrade on live Stripe sub → 409 `stripe_cancellation_required` with row
 untouched (IDs preserved); `/billing/success` + `/billing/cancelled` → 200;
-recipes pagination 20/31 intact.
+recipes pagination intact (20/31 at that time; 270 recipes after the v21 expansion — see §12).
 `20261009220000_add_past_due_since` during the audit).
 Full env-loading matrix in `docs/HANDOVER.md` §11.1.
 
@@ -76,7 +76,7 @@ Full env-loading matrix in `docs/HANDOVER.md` §11.1.
 | 10 | Workout planner | **PASS** | Live-verified 7-day schedule with rest days + safety copy; plan-gated |
 | 10 | Session player (timers, logging) | **IMPLEMENTED** | Built with rest timer + beeps + logging; not runtime-exercised in a browser |
 | 11 | Exercise library (50) + honest media states | **PASS** | 50 text-first exercises; `mediaType:'none'` everywhere; UI shows "Demo media not available" — zero fake URLs (DB-verified) |
-| 12 | Recipe library (31 curated, 13 cuisines, filters/tags) | **PASS** | Live-verified listing + filters; allergen banner before food content; curated-vs-AI badges |
+| 12 | Recipe library (270 recipes, 13 cuisines, server pagination/filters/tags, data-quality tiers) | **PASS** (v21.2 re-verified: tsc 0 errors, production build exit 0, tier badges render on list + detail) | 270 seed recipes: 239 engine-computed v21 batch (Pakistani 60, Indian 24, Middle Eastern 20, Turkish 15, Chinese/Japanese/Korean/Thai 15 each, Mediterranean/Italian/Mexican/American/Continental 12 each) + 31 hand-authored originals (demoted `verified: true` → `false`; tier `calculated-estimate`). `GET /api/recipes`: real DB pagination (`page`/`pageSize`, max 48, returns `total`/`pageCount`), server-side filters (cuisine, diet, tags incl. `halal` ≡ `halal-friendly`, allergens, kcal/protein ranges, maxTime, difficulty, mealType, sort) + alias-aware `q` (titles + persisted English/Urdu/Roman-Urdu aliases); new `GET /api/recipes/meta` (cuisines/tags/mealTypes/difficulties/allergens with counts). Private recipes are owner-only (404 otherwise, incl. the favorite route). Review status: **0 reviewed / 0 verified / 92 needsReview** (reconciled from the seed files 2026-10-14 by `packages/db/prisma/recipe-quality-report.ts`: 16 Pakistani, 4 Indian/Middle-Eastern/Turkish, 40 Asian, 32 Western; unresolved/un-convertible quantities contribute 0, never silently partial). Ingredient DB: 182 entries (173 USDA standard-reference basis, 9 standard-estimate; 0 captured sourceRefs — never invented). No recipe carries a `halal-friendly` tag (161 inference-granted tags removed; the tag now requires a recorded human review); allergen lists are declared from ingredient names with the caveat shown on the detail page. UI: tier badge per recipe ("Calculated estimate"/"Reviewed"/"Verified") + "Awaiting review" marker on list cards; detail page keeps the "Nutrition incomplete" banner and shows declared allergens with the caveat. Evidence note: engine recompute tests are regression checks, not accuracy proof (`docs/recipe-data-quality.md` §6). The `verified`/`reviewed` tiers became reachable in v21.3: migration `20261014100000_v213_recipe_review_evidence` added the `verificationEvidence`/`reviewEvidence` JSONB columns and `POST /api/admin/recipes/[slug]/review` records evidence-backed reviews (see `docs/recipe-data-quality.md` §9); seed data still carries no evidence, so all 270 seed recipes remain `calculated-estimate` (0 reviewed / 0 verified). |
 | 13 | AI coach | **PARTIAL** | Chat UI + consent-gated context + honest `not_configured` verified live; real replies **BLOCKED** on `AI_API_KEY` |
 
 ## Cross-cutting
@@ -116,6 +116,105 @@ Full env-loading matrix in `docs/HANDOVER.md` §11.1.
 - OAuth buttons: `GOOGLE_CLIENT_ID/SECRET`, `APPLE_CLIENT_ID/SECRET`; hidden until configured.
 - SMTP email: `EMAIL_DRIVER=smtp` + host/creds; console driver logs in dev.
 - S3 uploads: `STORAGE_DRIVER=s3` + endpoint/bucket/creds; local driver works out of the box.
+
+## v21.4 addendum (2026-10-15, Worker D — ITEM 6 + ITEM 8)
+
+> Intended end-state notes (additive, labeled v21.4). Other workers are
+> changing code in parallel (evidence serializer, review route, diary
+> route); any statement about their files is flagged below as
+> unverified-against-final-tree.
+
+**ITEM 6 — custom-recipe dietary/allergen states (defect CONFIRMED and fixed).**
+The old POST defaulted an omitted `dietCategory` to `'vegetarian'` (a meat
+recipe with no stated diet was labeled vegetarian) and stored `allergens: []`
+with no record that screening ever happened.
+
+- `dietCategory` is now **required at creation** (`CustomRecipeSchema` in
+  `packages/core/src/validation.ts`): a missing/unknown value is a 400
+  `validation_error` — never defaulted. The PATCH schema
+  (`CustomRecipeSchema.partial()`) keeps it optional (absent = leave as-is).
+- The creation UI (`apps/web/app/(app)/recipes/new/page.tsx`) forces an
+  explicit choice: the diet Select starts unselected and Save stays disabled
+  until the user picks vegetarian or non-vegetarian.
+- New migration `20261015090000_v214_recipe_allergen_screening` (additive,
+  forward-only, no backfill): `Recipe.allergenScreened BOOLEAN NOT NULL
+  DEFAULT false` — records whether the `allergens` list was produced by
+  ingredient-name screening, SEPARATE from the list itself. All pre-v21.4
+  rows (incl. the 270 seed recipes) stay `false`; claiming `true` for them
+  would invent evidence.
+- POST /api/recipes now runs name-based screening at creation via the new
+  pure helper `screenIngredientAllergens()` (`packages/core/src/
+  recipe-allergen-screening.ts`, exported from `@fitfusion/core`) and stores
+  the detected families in `allergens` with `allergenScreened: true`.
+  Screening is name-derived only — never a certified allergen analysis; the
+  ALLERGEN_CAVEAT still accompanies the list.
+- Detail-page copy (`apps/web/app/(app)/recipes/[slug]/page.tsx`): non-empty
+  list → "Declared from ingredient names: …"; empty + screened → "None
+  detected from ingredient names."; empty + unscreened → "Allergen screening
+  has not been performed for this recipe." — the old "None declared from
+  ingredient names." line no longer renders for unscreened recipes.
+- New pure helper `dietAllergenRecheckNeeded(prev, next)` (same module):
+  true when the ingredient name set or dietCategory materially changed;
+  false for portions-only or grams-only edits and for creation (creation
+  screens unconditionally). Exposed for the PATCH material-change path
+  (PATCH route itself is another worker's — not verified against the final
+  tree here).
+
+**ITEM 8 — docs reconciliation (this edit).** Stale v21.2 statements
+claiming the review-evidence columns were missing have been removed (§12
+row above; `docs/HANDOVER.md` §15; `docs/recipe-data-quality.md` §8) and
+replaced with the v21.3 reality (migration
+`20261014100000_v213_recipe_review_evidence`, admin review endpoint
+`apps/web/app/api/admin/recipes/[slug]/review`, evidence-backed badge
+policy in `docs/recipe-data-quality.md` §9, incomplete-nutrition
+protections).
+
+**Test-status categories used below:** source-implemented (code exists, not
+executed) · mock-tested (executed against mocks) · DB-tested (executed
+against real PostgreSQL) · browser-tested (executed in a real browser) ·
+real-service-verified (executed against a live external service) ·
+blocked-not-run (could not run; unblock named). Old counts quoted as
+historical are NOT fresh runs.
+
+**What v21.4 Worker D actually ran (2026-10-15):**
+- `npx tsc --noEmit` — **0 errors** in all three workspaces (packages/core,
+  packages/db, apps/web). Independently executed this commission.
+- `packages/core` vitest: **320/320** (23 files), including the new
+  `recipe-allergen-screening.test.ts` (11/11: wheat/milk/eggs/peanuts
+  detected from names; eggplant/coconut do not false-positive; empty result
+  is "not detected", never a safety promise; recheck semantics) and the new
+  v21.4 `CustomRecipeSchema` cases (missing/unknown dietCategory rejected;
+  PATCH schema keeps it optional). Independently executed.
+- `apps/web` mocked route suite
+  `tests/integration/v214-custom-recipe-diet-allergen.test.ts`: **7/7
+  mock-tested** (missing/unknown dietCategory → 400, nothing created; meat
+  recipe stored as non_vegetarian; wheat+milk+eggs+peanuts detected and
+  `allergenScreened: true` persisted; clean recipe → `[]` with screened=true;
+  declared-row names screened too). Independently executed (dummy
+  DATABASE_URL; `@fitfusion/db` fully mocked, no DB touched).
+- DB-gated suite `tests/integration/v214-allergen-screened-db.test.ts`: 2/2
+  **skipped** — no PostgreSQL on this VM (probe-guarded; even a dummy
+  DATABASE_URL skips rather than failing). Migration SQL
+  `20261015090000_v214_recipe_allergen_screening` is source-implemented;
+  `prisma validate` confirms the schema is valid; the migration has NOT been
+  applied to any database by this worker (blocked-not-run: needs a real
+  PostgreSQL — run `npm run db:migrate` where one exists).
+- Seed-count truth (quote from `npx tsx
+  packages/db/prisma/recipe-quality-report.ts`, executed 2026-10-15):
+  "recipes: 270 total (239 v21 batch + 31 hand-authored originals) …
+  needsReview total: 92 … reviewed: 0 | verified: 0 … ingredients: 182 (USDA
+  standard-reference=173, standard-estimate=9; sourceRef=0,
+  lastReviewedAt=0)".
+- **Not run:** `next build`, Playwright/browser tests, real-service
+  verification (nothing in ITEM 6 touches an external service). The web
+  full-integration suite was not re-run (DB-gated files skip; mocked files
+  unrelated to ITEM 6 were spot-run: `v20-recipe-import` 28 passed + 1 skipped (29),
+  `recipe-patch-governance-mocked` 6/6, `recipe-browse-pagination-mocked`
+  5/5 — all pass).
+- Existing DB-gated POST fixtures updated for the required dietCategory
+  (`v18-custom-recipes.test.ts`, `v212-nutrition-correctness.test.ts` —
+  source-implemented, skip here; they will execute wherever PostgreSQL
+  exists).
 
 ## Run it
 

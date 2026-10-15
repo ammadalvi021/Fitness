@@ -1,9 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { Check, ChefHat, SearchX } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  ChefHat,
+  ChevronLeft,
+  ChevronRight,
+  SearchX,
+} from 'lucide-react';
 import { Input, Select, Skeleton } from '@/components/ui';
 import {
   EmptyStateLux,
@@ -12,6 +19,11 @@ import {
   LuxButton,
 } from '@/components/luxury';
 import { num, unwrapList } from '../nutrition/_shared';
+import {
+  AWAITING_REVIEW_BADGE,
+  recipeQualityTier,
+  tierBadge,
+} from '@/lib/recipe-tier';
 
 /* ---------- shapes ---------- */
 
@@ -27,18 +39,51 @@ interface RecipeCard {
   cookMin: number;
   source?: string | null;
   verified?: boolean;
+  needsReview?: boolean;
+  // v21.3: server-computed canonical tier + display summaries (the API is
+  // the tier authority; the client never re-derives tiers from partial data).
+  tier?: 'calculated-estimate' | 'reviewed' | 'verified' | null;
+  reviewInfo?: { reviewer: string; reviewedAt: string } | null;
+  verificationInfo?: { checkedBy: string; checkedAt: string; method: string } | null;
 }
 
-const TAG_OPTIONS = [
-  'vegan',
-  'halal',
-  'high-protein',
-  'low-sodium',
-  'dairy-free',
-  'gluten-free',
-  'high-fiber',
-  'budget-friendly',
-];
+interface Meta {
+  cuisines: { name: string; count: number }[];
+  tags: { tag: string; count: number }[];
+  mealTypes: string[];
+  difficulties: string[];
+  allergens: { allergen: string; count: number }[];
+}
+
+interface Filters {
+  q: string;
+  cuisine: string;
+  diet: 'any' | 'vegetarian' | 'non_vegetarian';
+  tags: string[];
+  mealType: string;
+  difficulty: string;
+  minKcal: string;
+  maxKcal: string;
+  maxTime: string;
+  excludeAllergens: string[];
+}
+
+const DEFAULT_FILTERS: Filters = {
+  q: '',
+  cuisine: '',
+  diet: 'any',
+  tags: [],
+  mealType: '',
+  difficulty: '',
+  minKcal: '',
+  maxKcal: '',
+  maxTime: '',
+  excludeAllergens: [],
+};
+
+const DEFAULT_PAGE_SIZE = 24;
+const PAGE_SIZES = [12, 24, 48];
+const DEBOUNCE_MS = 350;
 
 function normalizeRecipe(r: Record<string, unknown>): RecipeCard {
   return {
@@ -58,109 +103,198 @@ function normalizeRecipe(r: Record<string, unknown>): RecipeCard {
     cookMin: num(r.cookMin),
     source: typeof r.source === 'string' ? r.source : null,
     verified: Boolean(r.verified),
+    needsReview: Boolean(r.needsReview),
+    tier: isTier(r.tier) ? r.tier : null,
+    reviewInfo: asReviewInfo(r.reviewInfo),
+    verificationInfo: asVerificationInfo(r.verificationInfo),
   };
+}
+
+function isTier(v: unknown): v is 'calculated-estimate' | 'reviewed' | 'verified' {
+  return v === 'calculated-estimate' || v === 'reviewed' || v === 'verified';
+}
+
+/** Display-safe review summary shape (v21.3 evidence API contract). */
+function asReviewInfo(v: unknown): { reviewer: string; reviewedAt: string } | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.reviewer !== 'string' || typeof o.reviewedAt !== 'string') return null;
+  return { reviewer: o.reviewer, reviewedAt: o.reviewedAt };
+}
+
+function asVerificationInfo(
+  v: unknown,
+): { checkedBy: string; checkedAt: string; method: string } | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const o = v as Record<string, unknown>;
+  if (
+    typeof o.checkedBy !== 'string' ||
+    typeof o.checkedAt !== 'string' ||
+    typeof o.method !== 'string'
+  )
+    return null;
+  return { checkedBy: o.checkedBy, checkedAt: o.checkedAt, method: o.method };
 }
 
 function totalTime(r: RecipeCard): number {
   return r.prepMin + r.cookMin;
 }
 
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export default function RecipesPage() {
-  const [q, setQ] = useState('');
-  const [cuisine, setCuisine] = useState('');
-  const [diet, setDiet] = useState<'any' | 'vegetarian' | 'non_vegetarian'>('any');
-  const [tags, setTags] = useState<string[]>([]);
-  const [maxKcal, setMaxKcal] = useState('');
-  const [maxTime, setMaxTime] = useState('');
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+
+  const [meta, setMeta] = useState<Meta | null>(null);
+  const [metaFailed, setMetaFailed] = useState(false);
 
   const [recipes, setRecipes] = useState<RecipeCard[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [cuisines, setCuisines] = useState<string[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const [loading, setLoading] = useState(true); // initial only
+  const [refreshing, setRefreshing] = useState(false); // background refetch
+  const [error, setError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchId = useRef(0);
 
-  const fetchRecipes = async (opts: {
-    q: string;
-    cuisine: string;
-    diet: string;
-    maxKcal: string;
-  }) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (opts.q.trim()) params.set('q', opts.q.trim());
-      if (opts.cuisine) params.set('cuisine', opts.cuisine);
-      if (opts.diet !== 'any') params.set('diet', opts.diet);
-      if (opts.maxKcal) params.set('maxKcal', opts.maxKcal);
-      const data = await api<unknown>(`/api/recipes?${params.toString()}`);
-      setRecipes(unwrapList<Record<string, unknown>>(data, 'recipes').map(normalizeRecipe));
-    } catch {
-      setRecipes([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* initial load: unfiltered, to collect cuisine options */
+  /* ---- filter vocabularies: full-table derived, loaded once ---- */
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      setLoading(true);
       try {
-        const data = await api<unknown>('/api/recipes');
-        const list = unwrapList<Record<string, unknown>>(data, 'recipes').map(normalizeRecipe);
-        setRecipes(list);
-        setCuisines(Array.from(new Set(list.map((r) => r.cuisine).filter((c): c is string => Boolean(c)))).sort());
+        const data = await api<Meta>('/api/recipes/meta');
+        if (!cancelled) setMeta(data);
       } catch {
-        setRecipes([]);
-      } finally {
-        setLoading(false);
+        if (!cancelled) setMetaFailed(true);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  /* debounced refetch on filter change (tags & maxTime applied client-side) */
+  /* ---- debounced server-side fetch: every filter is an API param ---- */
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      void fetchRecipes({ q, cuisine, diet, maxKcal });
-    }, 350);
+      const id = ++fetchId.current;
+      const firstLoad = recipes === null && error === null;
+      if (firstLoad) setLoading(true);
+      else setRefreshing(true);
+      (async () => {
+        try {
+          const params = new URLSearchParams();
+          params.set('page', String(page));
+          params.set('pageSize', String(pageSize));
+          const f = filters;
+          if (f.q.trim()) params.set('q', f.q.trim());
+          if (f.cuisine) params.set('cuisine', f.cuisine);
+          if (f.diet !== 'any') params.set('diet', f.diet);
+          for (const t of f.tags) params.append('tag', t);
+          if (f.mealType) params.set('mealType', f.mealType);
+          if (f.difficulty) params.set('difficulty', f.difficulty);
+          if (f.minKcal) params.set('minKcal', f.minKcal);
+          if (f.maxKcal) params.set('maxKcal', f.maxKcal);
+          if (f.maxTime) params.set('maxTime', f.maxTime);
+          if (f.excludeAllergens.length)
+            params.set('excludeAllergen', f.excludeAllergens.join(','));
+          const data = await api<unknown>(`/api/recipes?${params.toString()}`);
+          if (fetchId.current !== id) return; // stale response
+          const list = unwrapList<Record<string, unknown>>(data, 'recipes').map(normalizeRecipe);
+          const obj = data as Record<string, unknown>;
+          const t = num(obj.total);
+          const pc = Math.max(1, num(obj.pageCount) || 1);
+          setRecipes(list);
+          setTotal(t);
+          setPageCount(pc);
+          // Server clamps the page; stay in sync if it drifted.
+          const serverPage = num(obj.page);
+          if (serverPage > 0 && serverPage !== page) setPage(serverPage);
+          setError(null);
+        } catch (e) {
+          if (fetchId.current !== id) return;
+          setError(e instanceof Error ? e.message : 'Failed to load recipes.');
+        } finally {
+          if (fetchId.current === id) {
+            setLoading(false);
+            setRefreshing(false);
+          }
+        }
+      })();
+    }, DEBOUNCE_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, cuisine, diet, maxKcal]);
+  }, [filters, page, pageSize, retryNonce]);
 
-  const visible = useMemo(() => {
-    const list = recipes ?? [];
-    const maxK = maxKcal ? num(maxKcal) : null;
-    const maxT = maxTime ? num(maxTime) : null;
-    const wanted = tags.map((t) => t.toLowerCase());
-    return list.filter((r) => {
-      if (maxK != null && r.kcalPerServing > maxK) return false;
-      if (maxT != null && totalTime(r) > maxT) return false;
-      if (wanted.length > 0) {
-        const have = r.tags.map((t) => t.toLowerCase());
-        if (!wanted.every((t) => have.includes(t))) return false;
-      }
-      return true;
-    });
-  }, [recipes, tags, maxKcal, maxTime]);
+  function updateFilters(patch: Partial<Filters>) {
+    setFilters((f) => ({ ...f, ...patch }));
+    setPage(1);
+  }
 
   function toggleTag(t: string) {
-    setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+    setFilters((f) => ({
+      ...f,
+      tags: f.tags.includes(t) ? f.tags.filter((x) => x !== t) : [...f.tags, t],
+    }));
+    setPage(1);
   }
 
-  function clearFilters() {
-    setQ('');
-    setCuisine('');
-    setDiet('any');
-    setTags([]);
-    setMaxKcal('');
-    setMaxTime('');
+  function toggleAllergen(a: string) {
+    setFilters((f) => ({
+      ...f,
+      excludeAllergens: f.excludeAllergens.includes(a)
+        ? f.excludeAllergens.filter((x) => x !== a)
+        : [...f.excludeAllergens, a],
+    }));
+    setPage(1);
   }
 
+  function clearAll() {
+    setFilters(DEFAULT_FILTERS);
+    setPage(1);
+    setPageSize(DEFAULT_PAGE_SIZE);
+  }
+
+  const f = filters;
   const hasFilters =
-    q.trim() !== '' || cuisine !== '' || diet !== 'any' || tags.length > 0 || maxKcal !== '' || maxTime !== '';
+    f.q.trim() !== '' ||
+    f.cuisine !== '' ||
+    f.diet !== 'any' ||
+    f.tags.length > 0 ||
+    f.mealType !== '' ||
+    f.difficulty !== '' ||
+    f.minKcal !== '' ||
+    f.maxKcal !== '' ||
+    f.maxTime !== '' ||
+    f.excludeAllergens.length > 0;
+
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+
+  // Compact numbered pagination: current ± 2 plus first/last with ellipsis.
+  const pageNumbers: (number | '…')[] = (() => {
+    const out: (number | '…')[] = [];
+    const lo = Math.max(1, page - 2);
+    const hi = Math.min(pageCount, page + 2);
+    if (lo > 1) {
+      out.push(1);
+      if (lo > 2) out.push('…');
+    }
+    for (let p = lo; p <= hi; p++) out.push(p);
+    if (hi < pageCount) {
+      if (hi < pageCount - 1) out.push('…');
+      out.push(pageCount);
+    }
+    return out;
+  })();
 
   return (
     <div className="anim-page-enter mx-auto max-w-5xl space-y-6 p-4 pb-24">
@@ -182,8 +316,13 @@ export default function RecipesPage() {
         </Link>
       </div>
 
-      {/* ------- filters ------- */}
+      {/* ------- filters (all enforced server-side) ------- */}
       <GlassPanel className="p-5">
+        {metaFailed && (
+          <p className="t-body mb-3" style={{ color: 'var(--text-secondary)' }} role="note">
+            Filter suggestions could not be loaded; search and numeric filters still work.
+          </p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <label htmlFor="rq" className="t-body block font-medium">
@@ -193,8 +332,8 @@ export default function RecipesPage() {
               id="rq"
               type="search"
               placeholder="Dish, ingredient…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
+              value={f.q}
+              onChange={(e) => updateFilters({ q: e.target.value })}
               className="min-h-[44px]"
             />
           </div>
@@ -204,14 +343,14 @@ export default function RecipesPage() {
             </label>
             <Select
               id="rcuisine"
-              value={cuisine}
-              onChange={(e) => setCuisine(e.target.value)}
+              value={f.cuisine}
+              onChange={(e) => updateFilters({ cuisine: e.target.value })}
               className="min-h-[44px]"
             >
               <option value="">All cuisines</option>
-              {cuisines.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {(meta?.cuisines ?? []).map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.name} ({c.count})
                 </option>
               ))}
             </Select>
@@ -222,13 +361,49 @@ export default function RecipesPage() {
             </label>
             <Select
               id="rdiet"
-              value={diet}
-              onChange={(e) => setDiet(e.target.value as typeof diet)}
+              value={f.diet}
+              onChange={(e) => updateFilters({ diet: e.target.value as Filters['diet'] })}
               className="min-h-[44px]"
             >
               <option value="any">Mixed collection</option>
               <option value="vegetarian">Vegetarian</option>
               <option value="non_vegetarian">Non-vegetarian</option>
+            </Select>
+          </div>
+          <div>
+            <label htmlFor="rmealtype" className="t-body block font-medium">
+              Meal type
+            </label>
+            <Select
+              id="rmealtype"
+              value={f.mealType}
+              onChange={(e) => updateFilters({ mealType: e.target.value })}
+              className="min-h-[44px]"
+            >
+              <option value="">Any meal type</option>
+              {(meta?.mealTypes ?? []).map((m) => (
+                <option key={m} value={m}>
+                  {capitalize(m)}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label htmlFor="rdifficulty" className="t-body block font-medium">
+              Difficulty
+            </label>
+            <Select
+              id="rdifficulty"
+              value={f.difficulty}
+              onChange={(e) => updateFilters({ difficulty: e.target.value })}
+              className="min-h-[44px]"
+            >
+              <option value="">Any difficulty</option>
+              {(meta?.difficulties ?? []).map((d) => (
+                <option key={d} value={d}>
+                  {capitalize(d)}
+                </option>
+              ))}
             </Select>
           </div>
           <div>
@@ -240,8 +415,22 @@ export default function RecipesPage() {
               type="number"
               min={0}
               placeholder="e.g. 500"
-              value={maxKcal}
-              onChange={(e) => setMaxKcal(e.target.value)}
+              value={f.maxKcal}
+              onChange={(e) => updateFilters({ maxKcal: e.target.value })}
+              className="min-h-[44px]"
+            />
+          </div>
+          <div>
+            <label htmlFor="rminkcal" className="t-body block font-medium">
+              Min kcal / serving
+            </label>
+            <Input
+              id="rminkcal"
+              type="number"
+              min={0}
+              placeholder="e.g. 200"
+              value={f.minKcal}
+              onChange={(e) => updateFilters({ minKcal: e.target.value })}
               className="min-h-[44px]"
             />
           </div>
@@ -254,18 +443,14 @@ export default function RecipesPage() {
               type="number"
               min={0}
               placeholder="e.g. 30"
-              value={maxTime}
-              onChange={(e) => setMaxTime(e.target.value)}
+              value={f.maxTime}
+              onChange={(e) => updateFilters({ maxTime: e.target.value })}
               className="min-h-[44px]"
             />
           </div>
           <div className="flex items-end">
-            <LuxButton
-              variant="secondary"
-              disabled={!hasFilters}
-              onClick={clearFilters}
-            >
-              Clear filters
+            <LuxButton variant="secondary" disabled={!hasFilters} onClick={clearAll}>
+              Clear all
             </LuxButton>
           </div>
         </div>
@@ -275,17 +460,39 @@ export default function RecipesPage() {
             Tags
           </p>
           <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="tag-label">
-            {TAG_OPTIONS.map((t) => {
-              const on = tags.includes(t);
+            {(meta?.tags ?? []).map(({ tag, count }) => {
+              const on = f.tags.includes(tag);
               return (
                 <LuxButton
-                  key={t}
+                  key={tag}
                   aria-pressed={on}
                   variant={on ? 'primary' : 'secondary'}
-                  onClick={() => toggleTag(t)}
+                  onClick={() => toggleTag(tag)}
                 >
                   {on && <Check size={15} aria-hidden="true" />}
-                  {t}
+                  {tag} <span className="t-numeral opacity-70">({count})</span>
+                </LuxButton>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="t-body font-medium" id="allergen-label">
+            Exclude allergens
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="allergen-label">
+            {(meta?.allergens ?? []).map(({ allergen, count }) => {
+              const on = f.excludeAllergens.includes(allergen);
+              return (
+                <LuxButton
+                  key={allergen}
+                  aria-pressed={on}
+                  variant={on ? 'primary' : 'secondary'}
+                  onClick={() => toggleAllergen(allergen)}
+                >
+                  {on && <Check size={15} aria-hidden="true" />}
+                  No {allergen} <span className="t-numeral opacity-70">({count})</span>
                 </LuxButton>
               );
             })}
@@ -293,9 +500,38 @@ export default function RecipesPage() {
         </div>
       </GlassPanel>
 
+      {/* ------- result count / refreshing indicator ------- */}
+      {recipes !== null && !error && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="t-body" style={{ color: 'var(--text-secondary)' }} aria-live="polite">
+            Showing <span className="t-numeral">{from}</span>–<span className="t-numeral">{to}</span> of{' '}
+            <span className="t-numeral">{total}</span> recipe{total === 1 ? '' : 's'}
+            {refreshing && <span className="ml-2 italic">Updating…</span>}
+          </p>
+          <label className="t-body flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+            Per page
+            <Select
+              aria-label="Recipes per page"
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="min-h-[40px]"
+            >
+              {PAGE_SIZES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+      )}
+
       {/* ------- results ------- */}
-      {loading && recipes === null ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {loading && recipes === null && error === null ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Loading recipes">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <GlassPanel key={i} className="p-4">
               <Skeleton className="h-5 w-3/4" />
@@ -304,27 +540,46 @@ export default function RecipesPage() {
             </GlassPanel>
           ))}
         </div>
-      ) : visible.length === 0 ? (
+      ) : error !== null ? (
+        <GlassPanel className="p-8 text-center">
+          <AlertTriangle size={28} aria-hidden="true" className="mx-auto" style={{ color: 'var(--accent)' }} />
+          <h2 className="t-card-heading mt-3">Couldn&apos;t load recipes</h2>
+          <p className="t-body mt-1" style={{ color: 'var(--text-secondary)' }}>
+            {error}
+          </p>
+          <LuxButton
+            variant="primary"
+            className="mt-4"
+            onClick={() => {
+              setError(null);
+              setRecipes(null);
+              setRetryNonce((n) => n + 1);
+            }}
+          >
+            Retry
+          </LuxButton>
+        </GlassPanel>
+      ) : (recipes ?? []).length === 0 ? (
         <EmptyStateLux
           icon={<SearchX size={22} aria-hidden="true" />}
           title="No recipes match"
           message="Try widening your search or clearing some filters."
           action={
             hasFilters ? (
-              <LuxButton variant="secondary" onClick={clearFilters}>
-                Clear filters
+              <LuxButton variant="secondary" onClick={clearAll}>
+                Clear all filters
               </LuxButton>
             ) : undefined
           }
         />
       ) : (
         <>
-          <p className="t-body" style={{ color: 'var(--text-secondary)' }} aria-live="polite">
-            <span className="t-numeral">{visible.length}</span> recipe{visible.length === 1 ? '' : 's'}
-          </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map((r) => {
+            {(recipes ?? []).map((r) => {
               const isAi = r.source === 'ai';
+              // Data-quality tier badge (v21.2 claims policy): every recipe
+              // gets its tier; needsReview adds the "Awaiting review" marker.
+              const tb = tierBadge(recipeQualityTier(r));
               return (
                 <Link
                   key={r.id}
@@ -335,11 +590,13 @@ export default function RecipesPage() {
                 >
                   <GlassPanel className="anim-hover-lift h-full p-5">
                     <div className="flex flex-wrap gap-1">
-                      {r.verified ? (
-                        <LuxBadge tone="success">Verified</LuxBadge>
-                      ) : r.source === 'curated' ? (
-                        <LuxBadge>Curated</LuxBadge>
-                      ) : null}
+                      <LuxBadge tone={tb.tone}>{tb.label}</LuxBadge>
+                      {r.needsReview && (
+                        <LuxBadge tone={AWAITING_REVIEW_BADGE.tone}>
+                          {AWAITING_REVIEW_BADGE.label}
+                        </LuxBadge>
+                      )}
+                      {r.source === 'curated' && <LuxBadge>Curated</LuxBadge>}
                       {isAi && <LuxBadge tone="accent">AI-generated</LuxBadge>}
                       {r.dietCategory === 'vegetarian' && <LuxBadge tone="success">Vegetarian</LuxBadge>}
                     </div>
@@ -365,6 +622,45 @@ export default function RecipesPage() {
               );
             })}
           </div>
+
+          {/* ------- pagination ------- */}
+          {pageCount > 1 && (
+            <nav aria-label="Recipe pages" className="flex items-center justify-center gap-1 pt-2">
+              <LuxButton
+                variant="secondary"
+                aria-label="Previous page"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft size={16} aria-hidden="true" />
+              </LuxButton>
+              {pageNumbers.map((p, i) =>
+                p === '…' ? (
+                  <span key={`e${i}`} className="t-body px-1" aria-hidden="true">
+                    …
+                  </span>
+                ) : (
+                  <LuxButton
+                    key={p}
+                    variant={p === page ? 'primary' : 'secondary'}
+                    aria-label={`Page ${p}`}
+                    aria-current={p === page ? 'page' : undefined}
+                    onClick={() => setPage(p)}
+                  >
+                    <span className="t-numeral">{p}</span>
+                  </LuxButton>
+                ),
+              )}
+              <LuxButton
+                variant="secondary"
+                aria-label="Next page"
+                disabled={page >= pageCount}
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              >
+                <ChevronRight size={16} aria-hidden="true" />
+              </LuxButton>
+            </nav>
+          )}
         </>
       )}
     </div>

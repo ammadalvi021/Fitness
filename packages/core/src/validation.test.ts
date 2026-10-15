@@ -110,6 +110,48 @@ describe('DiaryEntrySchema', () => {
   });
 });
 
+describe('DiaryEntrySchema — v21.4 recipeId + nutritionAck', () => {
+  const base = { date: '2026-10-15', mealType: 'lunch', servings: 1, kcal: 100 };
+
+  it('accepts an optional recipeId', () => {
+    const ok = DiaryEntrySchema.safeParse({ ...base, customName: 'Karahi', recipeId: 'cmh8xyz123' });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data.recipeId).toBe('cmh8xyz123');
+  });
+
+  it('rejects an empty recipeId', () => {
+    expect(DiaryEntrySchema.safeParse({ ...base, customName: 'Karahi', recipeId: '' }).success).toBe(
+      false,
+    );
+  });
+
+  it('accepts an optional nutritionAck boolean', () => {
+    const ok = DiaryEntrySchema.safeParse({
+      ...base,
+      customName: 'Karahi',
+      recipeId: 'cmh8xyz123',
+      nutritionAck: true,
+    });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data.nutritionAck).toBe(true);
+  });
+
+  it('rejects a non-boolean nutritionAck', () => {
+    expect(
+      DiaryEntrySchema.safeParse({ ...base, customName: 'Karahi', nutritionAck: 'yes' }).success,
+    ).toBe(false);
+  });
+
+  it('keeps both fields optional for manual entries', () => {
+    const ok = DiaryEntrySchema.safeParse({ ...base, customName: 'Oatmeal' });
+    expect(ok.success).toBe(true);
+    if (ok.success) {
+      expect(ok.data.recipeId).toBeUndefined();
+      expect(ok.data.nutritionAck).toBeUndefined();
+    }
+  });
+});
+
 describe('MeasurementSchema', () => {
   it('accepts weight/height/waist/bmi measurements', () => {
     for (const type of ['weight', 'height', 'waist', 'bmi'] as const) {
@@ -238,15 +280,47 @@ describe('CustomRecipeSchema', () => {
   const valid = {
     name: 'My Daal',
     ingredients: [
-      { name: 'Masoor daal (dry)', grams: 100, kcal: 352, proteinG: 24.6, carbsG: 63.4, fatG: 1.1, fiberG: 10.7 },
+      // P4: declared nutrients require a documented basis.
+      { name: 'Masoor daal (dry)', grams: 100, kcal: 352, proteinG: 24.6, carbsG: 63.4, fatG: 1.1, fiberG: 10.7, basis: 'usda' },
       { name: 'Water', grams: 500 },
     ],
     portions: 2,
     instructions: ['Boil the daal until soft.'],
+    // V21.4: dietCategory is REQUIRED at creation (never defaulted).
+    dietCategory: 'vegetarian',
   };
 
   it('accepts a valid custom recipe', () => {
     expect(CustomRecipeSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('V21.4: dietCategory is required at creation — missing or unknown is rejected', () => {
+    const { dietCategory: _omitted, ...noDiet } = valid;
+    const missing = CustomRecipeSchema.safeParse(noDiet);
+    expect(missing.success).toBe(false);
+    if (!missing.success) {
+      expect(missing.error.issues.some((i) => i.path.join('.') === 'dietCategory')).toBe(true);
+    }
+    expect(
+      CustomRecipeSchema.safeParse({ ...valid, dietCategory: 'vegan' }).success,
+    ).toBe(false);
+    expect(
+      CustomRecipeSchema.safeParse({ ...valid, dietCategory: '' }).success,
+    ).toBe(false);
+    // Both legal values pass.
+    expect(
+      CustomRecipeSchema.safeParse({ ...valid, dietCategory: 'non_vegetarian' }).success,
+    ).toBe(true);
+  });
+
+  it('V21.4: PATCH schema keeps dietCategory optional (absent = leave as-is)', () => {
+    expect(CustomRecipePatchSchema.safeParse({}).success).toBe(true);
+    expect(
+      CustomRecipePatchSchema.safeParse({ dietCategory: 'non_vegetarian' }).success,
+    ).toBe(true);
+    expect(CustomRecipePatchSchema.safeParse({ dietCategory: 'vegan' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects empty ingredients, zero portions, and bad grams', () => {
@@ -264,5 +338,69 @@ describe('CustomRecipeSchema', () => {
     expect(CustomRecipePatchSchema.safeParse({ portions: 4 }).success).toBe(true);
     expect(CustomRecipePatchSchema.safeParse({ portions: 0 }).success).toBe(false);
     expect(CustomRecipePatchSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('P4: declared nutrients require all five + a basis', () => {
+    const base = { name: 'My sauce', grams: 100 };
+    // Full declaration + basis: accepted.
+    expect(
+      CustomRecipeSchema.safeParse({
+        name: 'R',
+        portions: 1,
+        dietCategory: 'vegetarian',
+        ingredients: [{ ...base, kcal: 100, proteinG: 2, carbsG: 10, fatG: 5, fiberG: 1, basis: 'label' }],
+      }).success,
+    ).toBe(true);
+    // Full declaration WITHOUT basis: rejected.
+    expect(
+      CustomRecipeSchema.safeParse({
+        name: 'R',
+        portions: 1,
+        ingredients: [{ ...base, kcal: 100, proteinG: 2, carbsG: 10, fatG: 5, fiberG: 1 }],
+      }).success,
+    ).toBe(false);
+    // Partial declaration: rejected.
+    expect(
+      CustomRecipeSchema.safeParse({
+        name: 'R',
+        portions: 1,
+        ingredients: [{ ...base, kcal: 100, proteinG: 2, basis: 'estimate' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('P4: name-only rows are accepted (flagged unknown downstream, not rejected)', () => {
+    // A chicken-like ingredient with only name+grams must not be silently
+    // zeroed — the server flags it "nutrition unknown".
+    expect(
+      CustomRecipeSchema.safeParse({
+        name: 'R',
+        portions: 1,
+        dietCategory: 'non_vegetarian',
+        ingredients: [{ name: 'Chicken-ish mystery meat', grams: 100 }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('P4: known-zero rows need no nutrients or basis', () => {
+    expect(
+      CustomRecipeSchema.safeParse({
+        name: 'R',
+        portions: 1,
+        dietCategory: 'vegetarian',
+        ingredients: [{ name: 'Salt', grams: 5 }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('P4: foodId rows skip the declared-nutrient rules (server-trusted)', () => {
+    expect(
+      CustomRecipeSchema.safeParse({
+        name: 'R',
+        portions: 1,
+        dietCategory: 'vegetarian',
+        ingredients: [{ foodId: 'some-food-id', name: 'Chapati', grams: 60 }],
+      }).success,
+    ).toBe(true);
   });
 });

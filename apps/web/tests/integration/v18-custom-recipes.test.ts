@@ -67,10 +67,12 @@ describe.skipIf(!HAS_DB)('V18 custom recipes', () => {
           ingredients: [
             { foodId: flourId, name: 'Flour', grams: 200 },
             { name: 'Water', grams: 500, kcal: 500 },
-            { name: 'Sugar', grams: 50, kcal: 400, proteinG: 0, carbsG: 100, fatG: 0, fiberG: 0 },
+            // V21.2 (P4): declared nutrients require a documented basis.
+            { name: 'Sugar', grams: 50, kcal: 400, proteinG: 0, carbsG: 100, fatG: 0, fiberG: 0, basis: 'estimate' },
           ],
           portions: 4,
           instructions: ['Mix.', 'Cook.'],
+          dietCategory: 'vegetarian', // V21.4: required at creation (never defaulted)
         }),
         token,
       ),
@@ -99,6 +101,7 @@ describe.skipIf(!HAS_DB)('V18 custom recipes', () => {
           name: 'Bad',
           ingredients: [{ foodId: 'nope', name: 'X', grams: 100 }],
           portions: 2,
+          dietCategory: 'vegetarian',
         }),
         token,
       ),
@@ -111,6 +114,7 @@ describe.skipIf(!HAS_DB)('V18 custom recipes', () => {
           name: 'Bad',
           ingredients: [{ name: 'X', grams: 100 }],
           portions: 0,
+          dietCategory: 'vegetarian', // V21.4: 400 must be for portions, not a missing diet
         }),
         token,
       ),
