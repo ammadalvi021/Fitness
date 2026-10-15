@@ -117,7 +117,7 @@ export const DiarySourceEnum = z.enum(['manual', 'recipe', 'web', 'scan']);
 export const DiaryEntrySchema = z.object({
   date: DateString,
   mealType: MealTypeEnum,
-  foodId: z.string().min(1).optional(),
+  foodId: z.string().min(1).nullable().optional(),
   customName: z.string().min(1).max(200).optional(),
   /**
    * V21.4: link to a stored Recipe. When present the server resolves the
@@ -139,7 +139,7 @@ export const DiaryEntrySchema = z.object({
    * Stored as-is on the diary entry: the diary keeps the snapshot from
    * log time. Absent/null = not tracked.
    */
-  micros: MicrosSchema,
+  micros: MicrosSchema.nullable(),
   idempotencyKey: z.string().min(1).max(100).optional(),
   /**
    * V21.4: explicit server-side acknowledgement that the logged nutrition is
