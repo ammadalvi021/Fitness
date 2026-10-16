@@ -390,6 +390,22 @@ model Recipe {
   needsReview       Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  // V21.5: content revision hash for optimistic concurrency (PATCH and the
+  // admin review route detect mid-write conflicts with 409 `stale_recipe`).
+  // Nullable: rows written before v21.5 carry no hash (no backfill); call
+  // sites treat NULL as "no revision known" and fall back to the
+  // pre-v21.5 write path.
+  contentHash       String?
+  // V21.7: mutation counter for optimistic concurrency. contentHash is
+  // content IDENTITY (changes only on a material content change); revision
+  // increments on EVERY recipe or review-state mutation — material PATCH,
+  // metadata-only PATCH, admin review, admin verify, admin clear — in the
+  // SAME atomic conditional updateMany as the mutation itself. Clients
+  // send the revision they read as `expectedRevision`; a write whose
+  // stored revision no longer matches is rejected with 409 `stale_recipe`.
+  // Existing rows default to 0 (forward-only additive migration; never
+  // reset by the backfill script or any other write path).
+  revision          Int      @default(0)
 
   cuisine      Cuisine?     @relation(fields: [cuisineId], references: [id], onDelete: SetNull)
   diaryEntries DiaryEntry[]

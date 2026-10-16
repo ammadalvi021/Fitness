@@ -200,9 +200,11 @@ export function describeCardAvailability(input: {
   loggedDays: number;
   totalKcal: number;
   timeframeLabel?: string;
+  /** Test seam: pin "today" for the streak check. Defaults to real today. */
+  todayIso?: string;
 }): VariantAvailability[] {
   const weight = buildWeightCardData(input.weights);
-  const streak = buildStreakCardData(input.activeDays);
+  const streak = buildStreakCardData(input.activeDays, input.todayIso ?? toDateOnlyLocal(new Date()));
   const milestone = buildMilestoneCardData({
     workoutCount: input.workoutCount,
     loggedDays: input.loggedDays,

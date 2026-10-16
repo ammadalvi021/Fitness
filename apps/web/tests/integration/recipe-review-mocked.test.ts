@@ -6,6 +6,11 @@
  * so the entire happy path actually executes on this VM: evidence
  * validation, the verify-requires-review gate, the one-call
  * review+verify path, clear, and the server-set reviewer identity.
+ *
+ * v21.6: the server REQUIRES expectedContentHash on every review write
+ * (recipe-governance.ts §5) — the `req` helper injects the explicit null
+ * guard for the legacy NULL-hash seeds. The guard contract itself is
+ * pinned in v216-concurrency-guards-mocked.test.ts.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextResponse } from 'next/server';
@@ -36,10 +41,65 @@ vi.mock('@fitfusion/db', () => {
           if (!row) throw new Error('not found');
           const next = { ...row };
           for (const [k, v] of Object.entries(data)) {
-            next[k] = v === JSON_NULL ? null : v;
+            // v21.7: the guarded writes bump the revision token atomically
+            // (`revision: { increment: 1 }`, exactly like Prisma).
+            if (
+              k === 'revision' &&
+              v !== null && typeof v === 'object' &&
+              typeof (v as Record<string, unknown>).increment === 'number'
+            ) {
+              next[k] =
+                (typeof next[k] === 'number' ? (next[k] as number) : 0) +
+                ((v as Record<string, unknown>).increment as number);
+            } else {
+              next[k] = v === JSON_NULL ? null : v;
+            }
           }
           store.set(where.slug, next);
           return next;
+        },
+      ),
+      // v21.6: the review route writes ONLY through the conditional
+      // updateMany (recipe-governance.ts §5 — the guard is required).
+      // Missing/undefined stored hash is SQL NULL, like Prisma.
+      updateMany: vi.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { slug: string; contentHash?: string | null; revision?: number };
+          data: Record<string, unknown>;
+        }) => {
+          const row = store.get(where.slug);
+          if (!row) return { count: 0 };
+          const storedHash = (row.contentHash ?? null) as string | null;
+          if (where.contentHash !== undefined && storedHash !== where.contentHash) {
+            return { count: 0 };
+          }
+          // v21.7: the guard is the (hash, revision) pair — the
+          // revision token must match too. A missing/undefined stored
+          // revision is SQL 0 (the migration default), like Prisma.
+          if (where.revision !== undefined && (row.revision ?? 0) !== where.revision) {
+            return { count: 0 };
+          }
+          const next = { ...row };
+          for (const [k, v] of Object.entries(data)) {
+            // v21.7: the guarded writes bump the revision token atomically
+            // (`revision: { increment: 1 }`, exactly like Prisma).
+            if (
+              k === 'revision' &&
+              v !== null && typeof v === 'object' &&
+              typeof (v as Record<string, unknown>).increment === 'number'
+            ) {
+              next[k] =
+                (typeof next[k] === 'number' ? (next[k] as number) : 0) +
+                ((v as Record<string, unknown>).increment as number);
+            } else {
+              next[k] = v === JSON_NULL ? null : v;
+            }
+          }
+          store.set(where.slug, next);
+          return { count: 1 };
         },
       ),
     },
@@ -70,14 +130,36 @@ function seedRecipe(slug: string) {
     verified: false,
     verificationEvidence: null,
     reviewEvidence: null,
+    revision: 0,
   });
 }
 
 function req(slug: string, method: string, body?: unknown) {
+  // v21.6: the server REQUIRES expectedContentHash on every review write
+  // (recipe-governance.ts §5). These tests exercise the review workflow,
+  // not the guard, so the helper sends the guard the seeds imply — the
+  // seeds predate hash tracking (contentHash NULL) → explicit null.
+  let payload = body;
+  if (
+    method === 'POST' &&
+    payload !== undefined &&
+    typeof payload === 'object' &&
+    payload !== null
+  ) {
+    // v21.7: the server REQUIRES the (hash, revision) guard pair on every
+    // review write (recipe-governance.ts §5b). Defaults first so an
+    // explicitly supplied guard still wins; the revision is read from the
+    // CURRENT stored row so sequential writes stay fresh.
+    payload = {
+      expectedContentHash: null,
+      expectedRevision: (store.get(slug)?.revision ?? 0) as number,
+      ...(payload as Record<string, unknown>),
+    };
+  }
   return new Request(`http://localhost/api/admin/recipes/${slug}/review`, {
     method,
     headers: { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: payload === undefined ? undefined : JSON.stringify(payload),
   }) as unknown as Parameters<typeof reviewPOST>[0];
 }
 

@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, type Prisma, buildAliasSearchClause } from '@fitfusion/db';
-import { CustomRecipeSchema, screenIngredientAllergens } from '@fitfusion/core';
+import { CustomRecipeSchema, buildContentSnapshot, computeRecipeContentHash, screenIngredientAllergens } from '@fitfusion/core';
+import {
+  checkRecipeDiet,
+  dietAmbiguityWarning,
+  dietConflictMessage,
+} from '@fitfusion/core';
 import { getSessionUser, requireUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/admin';
 import { apiError, apiOk, clampInt, readJson, zodMessage } from '@/lib/server-api';
 import { serializeRecipePublic } from '@/lib/recipe-evidence';
 import { buildRecipeTagWhere, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate } from '@/lib/recipe-tags';
-import { recipeNutrition, resolveIngredientRows, toInstructionSteps } from './custom-recipe';
+import { recipeNutrition, resolveIngredientRows, toInstructionSteps, toDietScreenRows, ingredientAllergenScreenNames } from './custom-recipe';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,13 +197,37 @@ export async function POST(req: NextRequest) {
     return apiError('food_not_found', `Food not found for ingredient "${missingFood}"`, 404);
   }
   const { perPortion } = recipeNutrition(rows, input.portions);
-  // V21.4 (ITEM 6): name-based allergen screening at creation. The detected
+  // V21.4 (ITEM 6): name-based allergen screening at creation. V21.5 (P2):
+  // the screener sees the CANONICAL catalogue names + persisted food
+  // aliases — never the client-supplied display name (a rename to "nutty
+  // spread" must not hide the peanut). The detected
   // family list is stored as `allergens`; `allergenScreened: true` records
   // that the screening was performed — screening status is SEPARATE from
   // the list itself, so an empty list can never again read as "screened and
   // clean" by accident. The PATCH material-change path (owned by the PATCH
   // worker) re-runs this via dietAllergenRecheckNeeded() from @fitfusion/core.
-  const screenedAllergens = screenIngredientAllergens(rows.map((r) => r.name));
+  const screenedAllergens = screenIngredientAllergens(
+    rows.flatMap(ingredientAllergenScreenNames),
+  );
+  // v21.5 (P3): the declared dietCategory is checked against the
+  // ingredients — a 'vegetarian' declaration with unambiguous
+  // meat/poultry/fish is REJECTED with a 400 naming the ingredient(s),
+  // never silently stored. Free-text ingredients that cannot be confirmed
+  // vegetarian keep the recipe under review (needsReview stays true with
+  // a warning) — unfamiliar is never assumed vegetarian. Dairy/eggs are
+  // NOT conflicts: lacto-ovo is a valid vegetarian interpretation in this
+  // market (see packages/core/src/diet-conflicts.ts).
+  const dietCheck = checkRecipeDiet(toDietScreenRows(rows), input.dietCategory);
+  if (!dietCheck.ok) {
+    return apiError(
+      'diet_conflict',
+      dietConflictMessage(dietCheck.conflicts, input.dietCategory),
+      400,
+    );
+  }
+  const dietWarnings = dietCheck.ambiguous.length
+    ? [dietAmbiguityWarning(dietCheck.ambiguous)]
+    : [];
   const slug =
     `u${s.user.id.replace(/[^a-z0-9]/gi, '').slice(-6)}-` +
     `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -234,13 +263,37 @@ export async function POST(req: NextRequest) {
       yieldGrams: input.yieldGrams ?? null,
       // V21.2 (P4/P1): unknown ingredients or un-convertible servings make
       // the recipe's nutrition incomplete — never silently partial.
-      needsReview: nutritionIncomplete,
+      // v21.5 (P3): ambiguous vegetarian-declaration ingredients do too.
+      needsReview: nutritionIncomplete || dietWarnings.length > 0,
+      // V21.5 (P4): the initial content revision hash (optimistic
+      // concurrency). V21.6: built through buildContentSnapshot — the
+      // single source of truth — from the exact rows being persisted
+      // (which carry foodId/canonicalName since v21.6), so the stored hash
+      // can never drift from the stored JSON. Every later PATCH recomputes
+      // it from the merged post-write content in the same atomic update.
+      contentHash: computeRecipeContentHash(
+        buildContentSnapshot({
+          ingredients: rows,
+          servings: input.portions,
+          dietCategory: input.dietCategory,
+          yieldGrams: input.yieldGrams ?? null,
+          tags: [],
+          allergens: screenedAllergens,
+        }),
+      ),
     },
   });
   // v21.4: never return the raw Prisma record — strip the evidence columns
   // (they are null at creation, but the serializer is the single safe path).
   return apiOk(
-    { recipe: serializeRecipePublic(recipe, isAdmin(s)), nutritionWarnings: warnings, nutritionIncomplete },
+    {
+      recipe: serializeRecipePublic(recipe, isAdmin(s)),
+      nutritionWarnings: warnings,
+      nutritionIncomplete,
+      // v21.5 (P3): vegetarian-declaration ambiguity warnings (empty when
+      // the declaration is clean or not vegetarian).
+      dietWarnings,
+    },
     201,
   );
 }

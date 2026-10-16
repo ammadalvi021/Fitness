@@ -1,0 +1,25 @@
+-- v21.7 PRIORITY 1: revision token for review-state concurrency.
+--
+-- THE DEFECT: `expectedContentHash` does not change on admin review /
+-- verify / clear (they do not touch recipe content), so two concurrent
+-- admin actions could pass the same content-hash guard and silently
+-- overwrite each other's review state.
+--
+-- THE FIX: `Recipe.revision` is a mutation counter that increments on
+-- EVERY recipe or review-state mutation — material PATCH, metadata-only
+-- PATCH, admin review, admin verify, admin clear — atomically, in the
+-- same conditional `updateMany` as the mutation itself. `contentHash`
+-- stays what it is: content IDENTITY, which changes only on a material
+-- content change (recomputed on every PATCH from the merged post-write
+-- content). The two guards are issued together: the client sends the
+-- (contentHash, revision) pair it read; the write lands only if BOTH
+-- still match. Zero matched rows → 409 `stale_recipe` (safe to reload
+-- and retry). Content-evidence invalidation policy (§1 of
+-- packages/core/src/recipe-governance.ts) is unchanged: a metadata-only
+-- edit still preserves evidence; only material edits invalidate.
+--
+-- Additive only: one new non-nullable INTEGER column with DEFAULT 0, so
+-- every existing row lands at revision 0 with no backfill and no downtime
+-- (legacy revision-0 rows guard with explicit expectedRevision: 0). No
+-- DROPs, no index changes, no other columns touched.
+ALTER TABLE "Recipe" ADD COLUMN "revision" INTEGER NOT NULL DEFAULT 0;

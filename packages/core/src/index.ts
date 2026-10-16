@@ -25,5 +25,6 @@ export * from './custom-ingredients.js';
 export * from './micronutrients.js';
 export * from './recipe-claims.js';
 export * from './recipe-allergen-screening.js';
+export * from './diet-conflicts.js';
 export * from './incomplete-nutrition.js';
 export * from './recipe-governance.js';

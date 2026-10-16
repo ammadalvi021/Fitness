@@ -9,7 +9,31 @@
  * POST /api/admin/recipes/[slug]/review — admin-only.
  *   Body: { action: 'review' | 'verify' | 'clear',
  *           evidence?: <ReviewRecord | VerificationEvidence>,
- *           reviewEvidence?: <ReviewRecord> }
+ *           reviewEvidence?: <ReviewRecord>,
+ *           expectedContentHash: string | null,   ← REQUIRED (v21.6)
+ *           expectedRevision: number }            ← REQUIRED (v21.7)
+ *   v21.5: `expectedContentHash` is the optimistic-concurrency guard (the
+ *   hash returned by the GET prefill). v21.6: the guard is REQUIRED — an
+ *   absent guard is rejected with 409 `stale_recipe` (reload and retry);
+ *   there is no unguarded write path anymore. Explicit `null` names a
+ *   legacy NULL-hash row (the write is conditional on contentHash IS NULL —
+ *   a concurrent edit moves the hash to non-null and the write 409s).
+ *   v21.7: the guard is the (hash, revision) PAIR
+ *   (recipe-governance.ts §5b). `expectedRevision` (integer, 0 for rows
+ *   written before v21.7) is REQUIRED alongside the hash; absent is 409.
+ *   The revision increments on EVERY mutation — including
+ *   review/verify/clear, which never move the content hash — so a stale
+ *   clear/review/verify can never silently overwrite a newer review
+ *   state, and two concurrent admin actions can never both land.
+ *   Every write is a single conditional updateMany on
+ *   { slug, contentHash, revision } with `revision: { increment: 1 }` in
+ *   the SAME statement: zero matched rows means a concurrent mutation
+ *   changed the recipe or its review state mid-review → 409
+ *   `stale_recipe` (safe to retry after reloading), never a review or
+ *   verification recorded against content/state the reviewer never saw.
+ *   The 'verify' action additionally re-reads the recipe immediately
+ *   before the write to refuse verification if needsReview flipped true
+ *   (defense in depth).
  *   - 'review': records a human review. `evidence` must be a complete
  *     ReviewRecord (validated field-by-field, then against
  *     meetsReviewedStandard()). Sets reviewEvidence. v21.4: when the recipe
@@ -39,7 +63,7 @@
  * `meetsReviewedStandard` from @fitfusion/core (single source of truth).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma, PrismaRuntime, type Prisma } from '@fitfusion/db';
+import { prisma, PrismaRuntime, type Prisma, type Recipe } from '@fitfusion/db';
 import {
   REVIEW_DATE_MIN_ISO,
   REVIEW_METHODS,
@@ -68,6 +92,24 @@ interface ValidatedBody {
   action: Action;
   evidence: unknown;
   reviewEvidence: unknown;
+  /**
+   * v21.5 (P4): optimistic-concurrency guard — the contentHash the admin
+   * read from GET. v21.6: the guard is REQUIRED (recipe-governance.ts §5) —
+   * absent means the write is rejected with 409 `stale_recipe`. Explicit
+   * `null` names a legacy NULL-hash row (conditional write on
+   * contentHash IS NULL, never unconditional).
+   */
+  expectedContentHash: string | null;
+  /**
+   * v21.7: the second half of the guard pair
+   * (recipe-governance.ts §5b) — the revision token the admin read from
+   * the GET prefill (0 for rows written before v21.7). REQUIRED alongside
+   * expectedContentHash; absent means 409 `stale_recipe`. The write is
+   * conditional on `revision` matching, and increments it in the same
+   * statement — so review/verify/clear bump the revision even though
+   * they never move the content hash.
+   */
+  expectedRevision: number;
 }
 
 function parseBody(data: unknown): { ok: true; body: ValidatedBody } | { ok: false; res: NextResponse } {
@@ -81,7 +123,70 @@ function parseBody(data: unknown): { ok: true; body: ValidatedBody } | { ok: fal
       res: apiError('validation_error', "action must be 'review', 'verify', or 'clear'", 400),
     };
   }
-  return { ok: true, body: { action: o.action, evidence: o.evidence, reviewEvidence: o.reviewEvidence } };
+  // v21.5 (P4): the concurrency guard is a write precondition, never
+  // content — reject malformed values up front so a garbage hash can never
+  // silently degrade to the unguarded path.
+  // v21.6: the guard is REQUIRED — an absent guard is rejected with 409
+  // `stale_recipe` and an actionable message (reload the prefill, resend
+  // the contentHash you read, retry). There is no unguarded write path.
+  if (o.expectedContentHash === undefined) {
+    return {
+      ok: false,
+      res: apiError(
+        'stale_recipe',
+        'Review write requires expectedContentHash (the contentHash from the GET prefill, or explicit null for recipes that predate hash tracking). Reload the review prefill and retry.',
+        409,
+        'expectedContentHash was not supplied',
+      ),
+    };
+  }
+  if (o.expectedContentHash !== null) {
+    if (
+      typeof o.expectedContentHash !== 'string' ||
+      o.expectedContentHash.trim().length === 0 ||
+      o.expectedContentHash.length > 128
+    ) {
+      return {
+        ok: false,
+        res: apiError('validation_error', 'expectedContentHash must be a non-empty string of at most 128 characters, or explicit null', 400),
+      };
+    }
+  }
+  // v21.7: the revision token is the second half of the guard pair
+  // (recipe-governance.ts §5b) — REQUIRED on every review write,
+  // exactly like the hash. Absent → 409 `stale_recipe` with an actionable
+  // message (reload the prefill and retry); there is no unguarded path.
+  if (o.expectedRevision === undefined) {
+    return {
+      ok: false,
+      res: apiError(
+        'stale_recipe',
+        'Review write requires expectedRevision (the revision token from the GET prefill; 0 for recipes written before v21.7). Reload the review prefill and retry.',
+        409,
+        'expectedRevision was not supplied',
+      ),
+    };
+  }
+  if (
+    typeof o.expectedRevision !== 'number' ||
+    !Number.isInteger(o.expectedRevision) ||
+    o.expectedRevision < 0
+  ) {
+    return {
+      ok: false,
+      res: apiError('validation_error', 'expectedRevision must be a non-negative integer', 400),
+    };
+  }
+  return {
+    ok: true,
+    body: {
+      action: o.action,
+      evidence: o.evidence,
+      reviewEvidence: o.reviewEvidence,
+      expectedContentHash: o.expectedContentHash as string | null,
+      expectedRevision: o.expectedRevision as number,
+    },
+  };
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -195,6 +300,49 @@ function toJsonValue(v: object): Prisma.InputJsonValue {
   return v as unknown as Prisma.InputJsonValue;
 }
 
+/**
+ * v21.5 (P4) conditional write for optimistic concurrency, v21.6: the
+ * write is ALWAYS conditional (recipe-governance.ts §5 — there is no
+ * unguarded path), v21.7: the guard is the (hash, revision) pair
+ * (recipe-governance.ts §5b).
+ *
+ * The write goes through `updateMany` on `{ slug, contentHash, revision }`
+ * and increments `revision` IN THE SAME statement: it lands only if no
+ * PATCH or review action touched the recipe or its review state in
+ * between. An explicit `null` hash guard names a legacy NULL-hash row
+ * (Prisma matches it as IS NULL — a concurrent edit moves the hash to
+ * non-null, so the write fails exactly like a hash mismatch). Zero matched
+ * rows → null, and the caller answers 409 `stale_recipe` (safe to retry
+ * after reloading).
+ *
+ * Returns null on a conflict; never performs a partial write (a single
+ * atomic statement either way).
+ */
+async function guardedReviewUpdate(
+  slug: string,
+  expectedContentHash: string | null,
+  expectedRevision: number,
+  data: Prisma.RecipeUpdateInput,
+): Promise<Recipe | null> {
+  const res = await prisma.recipe.updateMany({
+    where: { slug, contentHash: expectedContentHash, revision: expectedRevision },
+    data: { ...data, revision: { increment: 1 } },
+  });
+  if (res.count === 0) return null;
+  // The conditional write already won the race; this read is only for the
+  // response body. Null (deleted in the gap) still maps to the safe 409.
+  return prisma.recipe.findUnique({ where: { slug } });
+}
+
+function staleReviewError(): NextResponse {
+  return apiError(
+    'stale_recipe',
+    'The recipe or its review state changed while you were reviewing. Reload the recipe and re-check the current content before recording.',
+    409,
+    'expectedContentHash/expectedRevision did not match the stored revision',
+  );
+}
+
 export async function GET(req: NextRequest, { params }: Params) {
   const s = await requireAdmin(req);
   if (s instanceof NextResponse) return s;
@@ -224,6 +372,19 @@ export async function GET(req: NextRequest, { params }: Params) {
     needsReview: incomplete.needsReview,
     unresolvedIngredients: incomplete.unresolvedIngredients,
     verificationBlocked: incomplete.verificationBlocked,
+    // v21.5 (P4) / v21.6: the current content revision. The review form
+    // sends it back as expectedContentHash (explicit null for legacy rows)
+    // so a concurrent PATCH fails the write with 409 instead of recording
+    // evidence against changed content. null = the recipe predates
+    // content-hash tracking — the client then sends explicit null, and the
+    // server writes conditionally on contentHash IS NULL.
+    contentHash: recipe.contentHash ?? null,
+    // v21.7: the current mutation counter (recipe-governance.ts §5b).
+    // The review form sends it back as expectedRevision so a concurrent
+    // review/verify/clear fails the write with 409 instead of silently
+    // overwriting a newer review state. Rows written before v21.7 carry
+    // revision 0 (the migration default).
+    revision: recipe.revision ?? 0,
     // Reviewer identity is prefilled from the session, never typed by hand.
     reviewer: s.user.email,
   });
@@ -237,7 +398,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!body.ok) return body.res;
   const parsed = parseBody(body.data);
   if (!parsed.ok) return parsed.res;
-  const { action, evidence, reviewEvidence: suppliedReview } = parsed.body;
+  const { action, evidence, reviewEvidence: suppliedReview, expectedContentHash, expectedRevision } = parsed.body;
 
   const recipe = await prisma.recipe.findUnique({ where: { slug: params.slug } });
   if (!recipe) return apiError('not_found', 'Recipe not found', 404);
@@ -245,11 +406,19 @@ export async function POST(req: NextRequest, { params }: Params) {
   const identity = s.user.email;
 
   if (action === 'clear') {
-    const updated = await prisma.recipe.update({
-      where: { slug: params.slug },
+    const updated = await guardedReviewUpdate(
+      params.slug,
+      expectedContentHash,
+      expectedRevision,
       // Prisma Json? columns: PrismaRuntime.JsonNull writes SQL NULL.
-      data: { verified: false, verificationEvidence: PrismaRuntime.JsonNull, reviewEvidence: PrismaRuntime.JsonNull },
-    });
+      { verified: false, verificationEvidence: PrismaRuntime.JsonNull, reviewEvidence: PrismaRuntime.JsonNull },
+    );
+    // v21.5 (P4): a concurrent PATCH changed the recipe content while the
+    // admin was deciding — the clear must not land on content the admin
+    // never saw. 409 is safe to retry after reloading.
+    // v21.7: a concurrent review/verify/clear moved the revision — the
+    // stale clear 409s instead of silently undoing the newer state.
+    if (!updated) return staleReviewError();
     return apiOk({
       recipe: {
         slug: updated.slug,
@@ -257,6 +426,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         verified: false,
         reviewEvidence: null,
         verificationEvidence: null,
+        // v21.6: the current content revision.
+        contentHash: updated.contentHash ?? null,
+        // v21.7: the clear bumps the revision — the next guarded write
+        // must carry THIS value.
+        revision: updated.revision ?? 0,
       },
     });
   }
@@ -273,15 +447,20 @@ export async function POST(req: NextRequest, { params }: Params) {
     // re-verify path is the 'verify' action with fresh verification evidence
     // (which accepts reviewEvidence in the same call).
     const wasVerified = recipe.verified === true;
-    const updated = await prisma.recipe.update({
-      where: { slug: params.slug },
-      data: {
+    const updated = await guardedReviewUpdate(
+      params.slug,
+      expectedContentHash,
+      expectedRevision,
+      {
         reviewEvidence: toJsonValue(v.record),
         ...(wasVerified
           ? { verified: false, verificationEvidence: PrismaRuntime.JsonNull }
           : {}),
       },
-    });
+    );
+    // v21.5 (P4): concurrent content change mid-review → 409, never a
+    // review recorded against content the reviewer never saw.
+    if (!updated) return staleReviewError();
     const verificationEvidenceAfter = wasVerified
       ? null
       : asVerificationEvidence(updated.verificationEvidence);
@@ -297,6 +476,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         reviewEvidence: v.record,
         verificationEvidence: verificationEvidenceAfter,
         verificationReset: wasVerified,
+        // v21.6: the current content revision.
+        contentHash: updated.contentHash ?? null,
+        // v21.7: the review bumps the revision — the next guarded write
+        // must carry THIS value.
+        revision: updated.revision ?? 0,
       },
     });
   }
@@ -346,14 +530,43 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!ve.ok) {
     return apiError('validation_error', 'Verification evidence is incomplete', 400, ve.errors.join('; '));
   }
-  const updated = await prisma.recipe.update({
-    where: { slug: params.slug },
-    data: {
+  // v21.5 (P4) defense in depth: re-read the recipe IMMEDIATELY before the
+  // write and refuse verification if needsReview flipped true since the
+  // initial read — a concurrent PATCH may have made the nutrition
+  // incomplete between the read and this write. (With an expectedContentHash
+  // the conditional write below would also fail, because any material edit
+  // moves the hash; the explicit flag check answers with the actionable
+  // 400 rather than a 409.) Stale evidence can never restore a
+  // verification: a material mid-review edit also destroys the stored
+  // review evidence via PATCH invalidation, so finalReview above would no
+  // longer meet the standard anyway.
+  const fresh = await prisma.recipe.findUnique({ where: { slug: params.slug } });
+  if (!fresh) return apiError('not_found', 'Recipe not found', 404);
+  if (!mayVerifyNutrition(fresh.needsReview)) {
+    return apiError(
+      'incomplete_nutrition',
+      incompleteVerificationBlockMessageForRows(
+        fresh.ingredients as unknown as
+          | Array<{ name: string; nutritionStatus?: string | null }>
+          | null,
+      ),
+      400,
+    );
+  }
+  const updated = await guardedReviewUpdate(
+    params.slug,
+    expectedContentHash,
+    expectedRevision,
+    {
       verified: true,
       verificationEvidence: toJsonValue(ve.evidence),
       reviewEvidence: toJsonValue(finalReview as ReviewRecord),
     },
-  });
+  );
+  // v21.5 (P4): the recipe content changed mid-review → 409, never a
+  // verification stamped on content the verifier never checked.
+  // v21.7: a concurrent review-state change moved the revision → 409.
+  if (!updated) return staleReviewError();
   return apiOk({
     recipe: {
       slug: updated.slug,
@@ -361,6 +574,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       verified: true,
       reviewEvidence: finalReview,
       verificationEvidence: ve.evidence,
+      // v21.6: the current content revision.
+      contentHash: updated.contentHash ?? null,
+      // v21.7: the verify bumps the revision — the next guarded write
+      // must carry THIS value.
+      revision: updated.revision ?? 0,
     },
   });
 }

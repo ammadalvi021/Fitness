@@ -740,3 +740,46 @@ screen already sends an explicit `dietCategory` (checked, unchanged).
 **Still needed from Dr. Ammad:** nothing for ITEM 6/8 — but the v21.4
 migration must be applied (`npm run db:migrate`) wherever the app database
 runs before the new column exists in production.
+
+## 17. v21.5 allergen, dietary & recipe-governance fixes (2026-10-15, coordinator, 4 workers)
+
+**Scope:** PATCH allergen re-screening, canonical-name screening, vegetarian/meat conflict detection, admin-review optimistic concurrency, yieldGrams contract. No zip cut (parent's job). Forward-only additive migrations; no data fabricated.
+
+**P1 — PATCH re-screening (Worker A).** Defect: creation screened but PATCH never updated `allergens`/`allergenScreened`. Fix: PATCH uses existing `dietAllergenRecheckNeeded()` + `screenIngredientAllergens()`; refreshed list + status ride in the same atomic `prisma.update`. Metadata-only edits untouched. Display-name-only renames don't trigger recheck (canonical-key comparison — deliberate, documented). Tests: new `v215-patch-allergen-rescreen.test.ts` 14/14 (mocked).
+
+**P2 — canonical-name screening (Worker A).** Defect: display name shadowed the DB food name, hiding allergens on rename. Fix: `ResolvedRow.canonicalName` + `aliases` (via `FoodAlias` relation); creation and PATCH screen canonical+alias names. New pure helpers `ingredientAllergenScreenNames` / `storedRowAllergenScreenNames` / `storedRowAllergenKey`. Nutrition and display names unchanged.
+
+**P3 — vegetarian conflicts (Worker B).** Defect: required `dietCategory` didn't validate against ingredients. Fix: new pure `packages/core/src/diet-conflicts.ts` — unambiguous meat/poultry/fish/seafood + declared vegetarian → 400 `diet_conflict` naming the ingredient; ambiguous free-text → `needsReview` + warning. Dairy/eggs NOT conflicts (lacto-ovo norm; documented). Enforced on POST and PATCH. Tests: core 19/19, routes 10/10 (mocked).
+
+**P4 — review concurrency (Worker C).** Defect: review POST read → validate → write with no guard. Fix: `Recipe.contentHash` (SHA-256 over canonical content; migration `20261015121500_v215_recipe_content_hash`, additive/nullable/zero DROPs). PATCH recomputes atomically, accepts `expectedContentHash` → 409 `stale_recipe`. Review POST writes via conditional `updateMany`; `verify` re-reads before write and refuses 400 `incomplete_nutrition` if `needsReview` flipped. Admin UI carries the hash through. Tests: governance 33/33, stale-content mocked 12/12.
+
+**P5 — yieldGrams contract (Worker D).** Decision: Option A (informational). Per-serving nutrition is always batch totals ÷ `portions`; nothing consumes `yieldGrams` functionally. Moved to `NON_MATERIAL_RECIPE_FIELDS`; yieldGrams-only PATCH preserves nutrition and evidence. Contract documented in `recipe-governance.ts` §4.
+
+**Coordinator findings & drive-bys.**
+- Worker C's `node:crypto` import in barrel-exported `recipe-governance.ts` broke `next build` (webpack `UnhandledSchemeError` via `fasting/page.tsx` → `@fitfusion/core`). Replaced with a pure-TS SHA-256, verified byte-identical to `node:crypto` on standard vectors; added a regression test forbidding `node:` imports in the module. Build now exits 0.
+- Fixed a stale `micronutrients.test.ts` assertion (`micros: null` now valid per the v21.4 web-search fix) and a share-card date-bomb test (added `todayIso` test seam to `describeCardAvailability`).
+- `packages/core/dist` was stale and shadowed `src` for web tests — rebuilt; the zip-cut process must rebuild dist from src.
+
+**Verification (coordinator-executed).** Typecheck 0 errors (web/core/db incl. `check:prisma-syntax`); core 359/359; web recipe suites 81/81; `prisma validate` valid; production build exit 0. **DB-tested: blocked** (no PostgreSQL on this VM — DB suites skip-guard; live PATCH re-screen, conditional review writes, and both migrations need a real-DB exercise). **Browser-tested: blocked** (no runner in repo).
+
+**Status distinctions (per brief).** Implemented: P1–P5 source. Pure/mock-tested: all of the above (real counts). DB-tested: none (blocked). Browser-tested: none (blocked). Real-service-verified: none (owner keys/smoke tests pending for Google Fit + USDA-live, unchanged from v21.4).
+
+## 18. v21.6 + v21.7 concurrency, hashing & backfill hardening (2026-10-15, coordinator, 2 workers + coordinator verification)
+
+**Scope.** v21.6: identity-aware content hash, hash backfill script, enforced concurrency guards. v21.7: separate revision token, fully deterministic canonicalization, truthful backfill reporting. Forward-only additive migrations; no data fabricated; backfill NOT run against any production database (owner-side step).
+
+**v21.6 (historical).** `computeRecipeContentHash` canonical form extended with `foodId` + `canonicalName` — same display name with different foodIds hashes differently (verified live). Backfill script `packages/db/prisma/backfill-recipe-hashes.ts` (`npm run db:backfill-hashes`, `--dry-run`, idempotent, conditional writes) written and logic-tested; live run pending. Missing/stale `expectedContentHash` → 409 `stale_recipe` on PATCH/review/verify/clear; explicit-null legacy path; hash in API responses; admin client submits loaded hash. Note: v21.7 canonical form supersedes v21.6's (comparator extended); rows adopt it on next write/backfill.
+
+**v21.7 P1 — revision token.** New `Recipe.revision Int @default(0)` (migration `20261015195900_v217_recipe_revision`, zero DROPs). Every recipe/review-state mutation increments it atomically via conditional `updateMany({ where: { id, revision: expectedRevision }, data: { …, revision: { increment: 1 } } })`; zero rows → 409 `stale_recipe`. Clients send the (hash, revision) pair; admin UI updated. contentHash = content identity (evidence invalidation); revision = mutation counter (write serialization). Metadata-only edits bump revision, preserve evidence. Client revision is a precondition only — authz unchanged. Tests: `v217-revision-guard-mocked.test.ts` 25/25; `v217-revision-guard-db.test.ts` 4 genuine races written, skip-guarded (no PostgreSQL here).
+
+**v21.7 P2 — deterministic canonicalization.** Ingredient comparator now covers all six canonical fields (foodId → canonicalName → name → grams → quantity → unit). Reordered arrays hash identically; different foodIds/grams/quantity/unit distinguishable; whitespace/case normalization unchanged; single shared path. Tests: 7 new, governance file 48/48.
+
+**v21.7 P3 — truthful backfill.** `--allow-partial` flag; non-zero exit on unprocessed rows without it; final message states complete/PARTIAL/FAILED/INCOMPLETE; dry-run non-destructive; conditional writes; no revision touch; import-guarded shared canonicalization. Tests: 18/18. Invocation: `npm run db:backfill-hashes --workspace @fitfusion/db -- --dry-run` (repo root).
+
+**Obsolete claim removed.** The v21.5 note "NULL-hash rows use the unguarded review path" is wrong as of v21.7: they use the explicit-null conditional path (`where: { id, contentHash: null, revision: expectedRevision }`) — still concurrency-safe, never unconditional.
+
+**Verification (coordinator-executed, 2026-10-15).** Typecheck 0 errors (web/core/db, `check:prisma-syntax` 21 files); core 375/375; web concurrency/review suites 104/104 (6 files); db backfill 18/18 + quality-report 9/9; `prisma validate` valid; production build exit 0. **DB-tested: blocked** (no PostgreSQL — 4 race tests + live backfill pending). **Browser-tested: blocked** (no runner).
+
+**Status distinctions.** Implemented: P1–P3 source. Pure/mock-tested: all above (real counts). DB-tested: none (blocked). Browser-tested: none (blocked). Real-service-verified: none (Google Fit + USDA-live still need owner keys + smoke tests, unchanged).
+
+**Owner-side steps after deploy.** (1) `prisma migrate deploy` applies `20261015195900_v217_recipe_revision` (+ earlier pending). (2) Backfill: `DATABASE_URL=… npm run db:backfill-hashes -- --dry-run`, then `-- --batch-size 200` (repeat until exit 0). (3) Re-run DB suites with `DATABASE_URL` set to un-skip the real concurrency proofs.

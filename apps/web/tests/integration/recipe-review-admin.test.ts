@@ -10,6 +10,10 @@
  * requires a complete review first, verify accepts both evidence sets in one
  * call, clear resets everything, non-admin gets 403, reviewer identity is
  * server-set from the session.
+ *
+ * v21.6: the server REQUIRES expectedContentHash on every review write
+ * (recipe-governance.ts §5) — the authedJson helper follows the honest
+ * client flow (GET prefill → echo contentHash / explicit null).
  */
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { prisma } from '@fitfusion/db';
@@ -140,12 +144,42 @@ describe('admin review endpoint — workflow (DB-gated)', () => {
   }
 
   async function authedJson(token: string, slug: string, body: unknown) {
+    // v21.6: the server REQUIRES expectedContentHash on every review write
+    // (recipe-governance.ts §5). Follow the honest client flow: GET the
+    // prefill, then send back the contentHash it returned (explicit null
+    // for legacy NULL-hash rows) — unless the caller supplied a guard
+    // already. When the prefill itself fails (e.g. the non-admin 403
+    // probe), the body goes without a guard; the server's authz check
+    // runs before body parsing, so those tests keep their meaning.
+    const b = body as Record<string, unknown>;
+    let payload: Record<string, unknown> = b;
+    if (!('expectedContentHash' in b)) {
+      try {
+        const getRes = await reviewGET(
+          authed(
+            jsonRequest(`http://localhost/api/admin/recipes/${slug}/review`, 'GET'),
+            token,
+          ),
+          { params: { slug } },
+        );
+        const getBody = await readJson(getRes);
+        // v21.7: the guard is the (hash, revision) pair (recipe-governance.ts
+        // §5b) — the revision comes from the same prefill (0 for pre-v21.7 rows).
+        payload = {
+          ...b,
+          expectedContentHash: (getBody.contentHash ?? null) as string | null,
+          expectedRevision: (getBody.revision ?? 0) as number,
+        };
+      } catch {
+        // fall through without a guard — authz tests still apply
+      }
+    }
     return reviewPOST(
       authed(
         jsonRequest(
           `http://localhost/api/admin/recipes/${slug}/review`,
           'POST',
-          body,
+          payload,
         ),
         token,
       ),

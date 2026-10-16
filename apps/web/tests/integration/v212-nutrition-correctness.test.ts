@@ -291,6 +291,12 @@ describe.skipIf(!HAS_DB)('V21.2 nutrition correctness (P1 + P4)', () => {
             { foodId: chapatiId, name: 'Chapati', grams: 30 },
             { name: `${RUN} Another mystery`, grams: 50 },
           ],
+          // v21.6: the hash guard is required on every PATCH.
+          // v21.7: the guard is the (hash, revision) pair
+          // (recipe-governance.ts §5b) — the row was just created, so the
+          // revision is 0 (the migration default).
+          expectedContentHash: created.recipe.contentHash,
+          expectedRevision: (created.recipe.revision ?? 0) as number,
         }),
       },
     );

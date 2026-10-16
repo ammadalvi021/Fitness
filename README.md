@@ -433,7 +433,7 @@ Windows — please report differences).
   stored numbers match the engine — they do not prove independent accuracy.
 - **Data-quality tiers** (`packages/db/prisma/recipe-claims-policy.ts`,
   `docs/recipe-data-quality.md`): all 270 are `calculated-estimate`
-  (0 reviewed, 0 verified). 95 carry `needsReview` — unknown/unresolvable
+  (0 reviewed, 0 verified). 92 carry `needsReview` — unknown/unresolvable
   quantities contribute 0 to totals, never silently partial. The UI shows a
   tier badge per recipe ("Calculated estimate" / "Reviewed" / "Verified")
   plus an "Awaiting review" marker where applicable.
@@ -447,6 +447,13 @@ Windows — please report differences).
   requires a recorded human review); allergen lists are declared from
   ingredient names and the allergen caveat is shown wherever allergen info
   appears.
+- **Concurrency (v21.6/v21.7):** recipes carry a `contentHash` (SHA-256 over
+  canonical content incl. food IDs) and an integer `revision` (incremented on
+  every mutation). PATCH/review/verify/clear require the (hash, revision)
+  pair the client read — stale writes get 409 `stale_recipe`. The
+  `db:backfill-hashes` script backfills hashes for existing rows
+  (`--dry-run` first); it has **not** been run against production — script
+  availability is not backfill performed.
 
 ---
 

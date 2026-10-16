@@ -313,7 +313,7 @@ to NULL. Evidence is destroyed, not hidden.
   `meetsReviewedStandard()` / `meetsVerifiedStandard()` gate runs on the
   final object after the session identity is attached.
 
-### Invalidation on content change (v21.4)
+### Invalidation on content change (v21.4, v21.5 yieldGrams contract)
 
 **Canonical policy:** `packages/core/src/recipe-governance.ts`
 (`MATERIAL_RECIPE_FIELDS`, `invalidationForEdit`, `mayVerifyNutrition`).
@@ -321,13 +321,17 @@ A recipe must never stay Verified (or Reviewed) on evidence tied to an
 earlier version of its content:
 
 - **Material-change set** — `ingredients` (added/removed/quantity change),
-  `portions` / `yieldGrams` (yield — per-serving values are totals divided
-  by the yield), `dietCategory`, `tags` (material claims like
-  high-protein), `allergens`, and the derived nutrition values themselves
-  (material by construction, so a future direct-edit path cannot slip
-  through). Metadata-only edits — name/title, prepMin, cookMin,
-  difficulty, instructions, imageUrl, videoUrl, mealType, cuisineId — do
-  **not** touch evidence.
+  `portions` (servings — per-serving values are batch totals divided by
+  portions, so a portions change re-bases every recorded number),
+  `dietCategory`, `tags` (material claims like high-protein), `allergens`,
+  and the derived nutrition values themselves (material by construction, so
+  a future direct-edit path cannot slip through). Metadata-only edits —
+  name/title, prepMin, cookMin, difficulty, instructions, imageUrl, videoUrl,
+  mealType, cuisineId, **and `yieldGrams`** — do **not** touch evidence.
+  (v21.5: `yieldGrams` is the cook's informational reference for the actual
+  cooked batch weight — it is never a divisor in the per-serving math, so a
+  yieldGrams-only PATCH stores the value with nutrition untouched and
+  evidence preserved; calories are never recomputed just to clear a flag.)
 - **Any material edit lapses the review AND the verification**: PATCH
   `/api/recipes/[slug]` writes `verified=false`,
   `verificationEvidence=NULL`, `reviewEvidence=NULL` inside the SAME single
@@ -433,3 +437,40 @@ blocked-not-run.
   standard-estimate=9; sourceRef=0, lastReviewedAt=0).
 - Not run: `next build`, browser tests, real-service verification. Old
   counts quoted elsewhere in this file are historical, not fresh runs.
+
+## 11. contentHash backfill — invocation and truthful reporting (v21.7)
+
+The v21.5 migration added nullable `Recipe.contentHash`; `db:backfill-hashes`
+fills it for legacy rows using the SAME canonicalization the app uses
+(`buildContentSnapshot` + `computeRecipeContentHash` from `@fitfusion/core` —
+never a copy; an import guard in `backfill-recipe-hashes.test.ts` fails if a
+forked implementation appears).
+
+**Invocation.** From `packages/db`:
+`DATABASE_URL=... npm run db:backfill-hashes -- --dry-run`. From the repo
+root: `npm run db:backfill-hashes --workspace @fitfusion/db -- --dry-run`.
+Flags: `--dry-run` (compute + report, no writes), `--batch-size N` (default
+100), `--allow-partial`.
+
+**Truthful exit (v21.7).** The exit code is non-zero whenever rows remain
+unprocessed (`skipped + failed > 0`) — a 0 exit with unprocessed rows would
+silently claim the backfill is done. Pass `--allow-partial` to accept a
+partial state explicitly. The final message always names the state:
+complete / PARTIAL (--allow-partial) / FAILED / INCOMPLETE. `--dry-run`
+never writes; writes stay conditional (`updateMany` on
+`{ id, contentHash: null }`, so a concurrent PATCH is never clobbered);
+skipped rows are reported, never hashed or fabricated to make the counts
+pass. Re-runs are idempotent and re-scan the skipped rows.
+
+**v21.7 canonical-form note.** The ingredient row sort now breaks ties on
+`quantity` and `unit` as well (see §5 of `recipe-governance.ts`), so it is
+fully deterministic over all six canonical ingredient fields. Stored
+v21.6-era hashes stay valid where no such tie exists; rows that tie on
+foodId + canonicalName + name + grams AND differ in quantity/unit free text
+adopt the new form on their next write or backfill. The guard compares at
+write time, so this is safe.
+
+**Status:** the script has NOT been run against the live database from the
+assistant's side (no PostgreSQL on this VM; dry-run attempts fail cleanly at
+the DB boundary with a non-zero exit and no writes). The live backfill stays
+a deliberate step on the owner's end after deploy.

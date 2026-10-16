@@ -34,6 +34,21 @@ interface ReviewState {
   needsReview: boolean;
   unresolvedIngredients: string[];
   verificationBlocked: boolean;
+  /**
+   * v21.6: the content revision hash from the GET prefill. Sent back as
+   * expectedContentHash so a concurrent recipe edit fails the review POST
+   * with 409 instead of recording evidence against changed content.
+   * null = the recipe predates hash tracking (the client then sends
+   * explicit null; the server writes conditionally on contentHash IS NULL).
+   * v21.7: `revision` is the second half of the guard pair
+   * (recipe-governance.ts §5b) — the mutation counter the GET returned.
+   * Sent back as expectedRevision; every review/verify/clear bumps it, so
+   * a stale admin action 409s instead of silently overwriting a newer
+   * review state. 0 = the recipe was written before v21.7 (the migration
+   * default).
+   */
+  contentHash: string | null;
+  revision: number;
 }
 
 function asStringArray(v: unknown): string[] {
@@ -102,6 +117,12 @@ export default function AdminRecipeReview({
           needsReview: data.needsReview === true,
           unresolvedIngredients: asStringArray(data.unresolvedIngredients),
           verificationBlocked: data.verificationBlocked === true,
+          contentHash:
+            typeof data.contentHash === 'string' ? data.contentHash : null,
+          revision:
+            typeof data.revision === 'number' && Number.isInteger(data.revision)
+              ? data.revision
+              : 0,
         });
         setReviewer(str(data.reviewer));
         setAdmin(true);
@@ -159,6 +180,20 @@ export default function AdminRecipeReview({
                 // same call satisfies the requirement in one step.
                 reviewEvidence,
               };
+      // v21.6: optimistic concurrency — the server REQUIRES the guard on
+      // every review write (recipe-governance.ts §5). Always send the hash
+      // the GET prefill returned: a string for hashed rows, EXPLICIT null
+      // for legacy rows that predate hash tracking (the server then writes
+      // conditionally on contentHash IS NULL instead of failing over to an
+      // unconditional write — a concurrent edit moves the hash to non-null
+      // and the write 409s). Omitting it is a 409, never a silent write.
+      // v21.7: the guard is the (hash, revision) PAIR (§5b) — also send the
+      // revision token the GET returned (0 for pre-v21.7 rows). A review /
+      // verify / clear that does not move the hash still moves the
+      // revision, so a stale admin action 409s instead of silently
+      // overwriting a newer review state.
+      body.expectedContentHash = state?.contentHash ?? null;
+      body.expectedRevision = state?.revision ?? 0;
       const data = await api<Record<string, unknown>>(
         `/api/admin/recipes/${encodeURIComponent(slug)}/review`,
         { method: 'POST', body },
@@ -178,10 +213,20 @@ export default function AdminRecipeReview({
         verified: res.verified === true,
         // The review POST can reset verification server-side; the
         // incomplete status is unchanged by review actions (the API does
-        // not clear needsReview), so carry it forward.
+        // not clear needsReview), so carry it forward. Review actions do
+        // not change content, so the content hash is carried forward too
+        // (a 409 stale_recipe would have thrown below instead).
+        // v21.7: the POST bumps the revision token (review/verify/clear
+        // move it in the same statement) — take the NEW value from the
+        // response so the next write carries a fresh guard.
         needsReview: state?.needsReview === true,
         unresolvedIngredients: state?.unresolvedIngredients ?? [],
         verificationBlocked: state?.verificationBlocked === true,
+        contentHash: state?.contentHash ?? null,
+        revision:
+          typeof res.revision === 'number' && Number.isInteger(res.revision)
+            ? res.revision
+            : (state?.revision ?? 0),
       });
       setDone(
         action === 'clear'
@@ -194,8 +239,18 @@ export default function AdminRecipeReview({
       );
       onChanged();
     } catch (e: unknown) {
+      // v21.5: a 409 stale_recipe means a concurrent recipe edit landed
+      // while the admin was reviewing — say so explicitly (the safe move
+      // is to reload and re-check the current content, not retry blindly).
+      // v21.7: the same 409 also covers a concurrent review-state change
+      // (a second admin's review/verify/clear moved the revision token),
+      // so the message names both.
       setError(
-        e instanceof ApiError ? e.message : 'Could not save the review.',
+        e instanceof ApiError && e.code === 'stale_recipe'
+          ? 'The recipe\u2019s content or its review state changed while you were reviewing. Reload the page to see the current content and status, re-check it, then record your review.'
+          : e instanceof ApiError
+            ? e.message
+            : 'Could not save the review.',
       );
     } finally {
       setBusy(false);

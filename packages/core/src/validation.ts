@@ -274,6 +274,24 @@ export const CustomRecipeSchema = z.object({
 export type CustomRecipeInput = z.infer<typeof CustomRecipeSchema>;
 
 /** PATCH body: any subset of the create fields; changing ingredients or
- * portions triggers a nutrition recalculation on the server. */
-export const CustomRecipePatchSchema = CustomRecipeSchema.partial();
+ * portions triggers a nutrition recalculation on the server.
+ * v21.5: `expectedContentHash` is the optimistic-concurrency guard — the
+ * content hash the client read (see computeRecipeContentHash in
+ * recipe-governance.ts). It is metadata for the write, never a content
+ * field; callers must exclude it from material-field detection.
+ * v21.6: the guard is REQUIRED on every PATCH (see recipe-governance.ts §5)
+ * — absent means rejected 409 by the route. Explicit `null` names legacy
+ * rows that predate hash tracking (the server then writes conditionally on
+ * contentHash IS NULL, never unconditionally).
+ * v21.7: `expectedRevision` is the second half of the guard pair
+ * (recipe-governance.ts §5b) — the revision token the client read. It
+ * increments on EVERY mutation (including review/verify/clear, which do
+ * not move the content hash), so it closes the review-state overwrite
+ * hole. Like `expectedContentHash` it is metadata for the write, never a
+ * content field: callers must exclude it from material-field detection,
+ * and the ROUTE — not the schema — rejects the absent guard with 409. */
+export const CustomRecipePatchSchema = CustomRecipeSchema.partial().extend({
+  expectedContentHash: z.union([z.string().min(1).max(128), z.null()]).optional(),
+  expectedRevision: z.number().int().min(0).optional(),
+});
 export type CustomRecipePatchInput = z.infer<typeof CustomRecipePatchSchema>;

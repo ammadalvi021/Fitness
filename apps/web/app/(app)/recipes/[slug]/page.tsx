@@ -165,11 +165,26 @@ function normalizeRecipe(r: Record<string, unknown>): RecipeDetail {
     };
   });
   const rawSteps = Array.isArray(r.instructions) ? (r.instructions as unknown[]) : [];
+  // Seed data bakes step numbers into the text ("1. Prick the eggplants…")
+  // while the page renders an <ol> that numbers them again ("1. 1. …").
+  // Strip a leading number so the list markup is the single numbering source.
+  const stripLeadingStepNumber = (t: string) => {
+    // Repeat to collapse already-doubled prefixes ("2. 2. Cool…").
+    // The '-' is deliberately excluded so quantity ranges ("1-2 tbsp oil")
+    // are never mangled.
+    let out = t;
+    for (let i = 0; i < 3; i++) {
+      const next = out.replace(/^\s*(?:step\s+)?\d+\s*[.)\]:]\s*/i, '').trimStart();
+      if (next === out) break;
+      out = next;
+    }
+    return out;
+  };
   const instructions = rawSteps.map((s) => {
-    if (typeof s === 'string') return s;
+    if (typeof s === 'string') return stripLeadingStepNumber(s);
     if (s && typeof s === 'object') {
       const o = s as Record<string, unknown>;
-      return String(o.text ?? o.step ?? o.instruction ?? '');
+      return stripLeadingStepNumber(String(o.text ?? o.step ?? o.instruction ?? ''));
     }
     return '';
   }).filter((s) => s.length > 0);

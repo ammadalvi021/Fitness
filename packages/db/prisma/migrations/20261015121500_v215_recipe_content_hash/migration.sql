@@ -1,0 +1,13 @@
+-- v21.5 PRIORITY 4: recipe content revision hash (optimistic concurrency).
+-- The PATCH route and the admin review route store a SHA-256 digest of the
+-- canonical recipe content (ingredients, servings, dietCategory, yieldGrams,
+-- tags, allergens — see computeRecipeContentHash in
+-- packages/core/src/recipe-governance.ts) in Recipe.contentHash. Clients
+-- send the hash they read as `expectedContentHash`; a write whose stored
+-- hash no longer matches is rejected with 409 `stale_recipe` (safe to
+-- retry) instead of overwriting a concurrent edit or recording
+-- review/verification evidence against content the reviewer never saw.
+--
+-- Additive only: one new NULLABLE column, no backfill (pre-v21.5 rows keep
+-- NULL and use the pre-v21.5 write path), no index changes, no DROPs.
+ALTER TABLE "Recipe" ADD COLUMN "contentHash" TEXT;

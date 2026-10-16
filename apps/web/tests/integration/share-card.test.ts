@@ -247,6 +247,9 @@ describe("describeCardAvailability", () => {
       workoutCount: 3,
       loggedDays: 5,
       totalKcal: 12000,
+      // Pin "today" — the streak check otherwise uses the real current date
+      // and this test rots as the calendar moves (date-bomb fixed 2026-10-15).
+      todayIso: toDateOnlyLocal(today),
     });
     expect(list).toHaveLength(3);
     for (const entry of list) {

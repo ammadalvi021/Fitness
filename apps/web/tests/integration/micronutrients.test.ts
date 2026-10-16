@@ -233,7 +233,10 @@ describe('MicrosSchema / DiaryEntrySchema', () => {
 
   it('micros is optional — legacy entries without micros still validate', () => {
     expect(DiaryEntrySchema.safeParse(base).success).toBe(true);
-    expect(DiaryEntrySchema.safeParse({ ...base, micros: null }).success).toBe(false); // null ≠ absent
+    // v21.4 web-search fix: explicit null = "not tracked" (e.g. Open Food
+    // Facts results carry no micros). Regression test in
+    // packages/core/src/diary-micros-null.test.ts pins the full payload.
+    expect(DiaryEntrySchema.safeParse({ ...base, micros: null }).success).toBe(true);
   });
 
   it('rejects unknown micro keys (closed shape, strict)', () => {

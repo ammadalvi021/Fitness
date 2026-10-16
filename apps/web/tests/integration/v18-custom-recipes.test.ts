@@ -2,6 +2,11 @@
  * V18 custom recipes: create (server-computed nutrition, water=0 kcal),
  * mine=1 listing, public exclusion, PATCH recalculation, ownership.
  * DB-backed — skipped gracefully when no PostgreSQL is reachable.
+ *
+ * v21.6: the server REQUIRES expectedContentHash on every PATCH
+ * (recipe-governance.ts §5) — the tests echo the contentHash returned by
+ * the previous response (the honest client flow: GET/create returns the
+ * current revision, the client sends it back).
  */
 import { NextRequest } from 'next/server';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -29,6 +34,10 @@ describe.skipIf(!HAS_DB)('V18 custom recipes', () => {
   let token2 = '';
   let flourId = '';
   let recipeId = '';
+  // v21.6: the concurrency guard echoed on every PATCH (echo of the
+  // contentHash the last response returned — the honest client flow).
+  let recipeHash: string | null = null;
+  let recipeRevision = 0;
   const recipeIds: string[] = [];
 
   afterAll(async () => {
@@ -82,6 +91,11 @@ describe.skipIf(!HAS_DB)('V18 custom recipes', () => {
     const r = body.recipe;
     recipeId = r.id;
     recipeIds.push(r.id);
+    // v21.6: capture the initial content revision — the first PATCH echoes
+    // it back as the concurrency guard.
+    recipeHash = typeof r.contentHash === 'string' ? r.contentHash : null;
+    // v21.7: the guard is the (hash, revision) pair (recipe-governance.ts §5b).
+    recipeRevision = typeof r.revision === 'number' ? r.revision : 0;
     // Flour 200 g -> 680 kcal / 26 P / 144 C / 4 F; sugar 50 g -> 200 kcal / 50 C;
     // water -> 0 despite the bogus 9999 kcal. Totals 880 kcal / 4 = 220.
     expect(r.kcalPerServing).toBe(220);
@@ -141,13 +155,26 @@ describe.skipIf(!HAS_DB)('V18 custom recipes', () => {
 
   it('PATCH portions recalculates per-portion nutrition', async () => {
     const res = await recipePATCH(
-      authed(jsonRequest(`http://localhost/api/recipes/${recipeId}`, 'PATCH', { portions: 2 }), token),
+      authed(jsonRequest(`http://localhost/api/recipes/${recipeId}`, 'PATCH', {
+        portions: 2,
+        // v21.6: the guard is required on every PATCH.
+        // v21.7: the guard is the (hash, revision) pair (§5b).
+        expectedContentHash: recipeHash,
+        expectedRevision: recipeRevision,
+      }), token),
       { params: { slug: recipeId } },
     );
     expect(res.status).toBe(200);
     const body = await readJson(res);
     expect(body.recipe.servings).toBe(2);
     expect(body.recipe.kcalPerServing).toBe(440);
+    // The write moved the content revision — the next PATCH echoes the new one.
+    recipeHash = typeof body.recipe.contentHash === 'string' ? body.recipe.contentHash : null;
+    expect(recipeHash).not.toBeNull();
+    // v21.7: every PATCH also bumps the revision token — the next PATCH
+    // must carry the new value.
+    recipeRevision = body.recipe.revision as number;
+    expect(recipeRevision).toBeGreaterThan(0);
   });
 
   it('PATCH ingredients recalculates too', async () => {
@@ -155,6 +182,10 @@ describe.skipIf(!HAS_DB)('V18 custom recipes', () => {
       authed(
         jsonRequest(`http://localhost/api/recipes/${recipeId}`, 'PATCH', {
           ingredients: [{ name: 'Sugar', grams: 100, kcal: 400, carbsG: 100 }],
+          // v21.6: the guard is required on every PATCH.
+          // v21.7: the guard is the (hash, revision) pair (§5b).
+          expectedContentHash: recipeHash,
+          expectedRevision: recipeRevision,
         }),
         token,
       ),
