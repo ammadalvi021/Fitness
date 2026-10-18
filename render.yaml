@@ -15,12 +15,15 @@ services:
     # apps/web `dependencies`, not devDependencies — next build needs them.
     # The @fitfusion/* workspace packages compile to dist/ (gitignored), so
     # they must be built before the Next.js app that imports them.
+    # Build order matters: db:seed (via seed-safety.ts) imports the BUILT
+    # @fitfusion/core dist, and dist/ is gitignored so it never arrives from
+    # the repo. Packages must be compiled before the seed runs.
     buildCommand: >-
       npm install &&
       npx prisma generate --schema packages/db/prisma/schema.prisma &&
+      npm run build --workspace @fitfusion/core --workspace @fitfusion/db --workspace @fitfusion/ai &&
       npx prisma migrate deploy --schema packages/db/prisma/schema.prisma &&
       npm run db:seed &&
-      npm run build --workspace @fitfusion/core --workspace @fitfusion/db --workspace @fitfusion/ai &&
       npm run build --workspace apps/web
     startCommand: npm run start --workspace apps/web
     healthCheckPath: /api/health
