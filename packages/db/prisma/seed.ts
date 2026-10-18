@@ -1984,7 +1984,6 @@ const FOODS: FoodSeed[] = [
   { name: 'Basmati Rice (cooked)', servingSize: 150, servingUnit: 'g (1 cup)', kcal: 190, proteinG: 4, carbsG: 42, fatG: 0.5, fiberG: 1 },
   { name: 'Masoor Daal (cooked)', servingSize: 200, servingUnit: 'g (1 cup)', kcal: 230, proteinG: 12, carbsG: 35, fatG: 3, fiberG: 8 },
   { name: 'Chicken Breast (grilled)', servingSize: 100, servingUnit: 'g', kcal: 165, proteinG: 31, carbsG: 0, fatG: 3.5, fiberG: 0 },
-  { name: 'Tandoori Chicken', servingSize: 100, servingUnit: 'g', kcal: 150, proteinG: 28, carbsG: 2, fatG: 4, fiberG: 0 },
   { name: 'Naan', servingSize: 1, servingUnit: 'piece (90g)', servingWeightG: 90, kcal: 310, proteinG: 8, carbsG: 56, fatG: 6, fiberG: 2 },
   { name: 'Paratha (whole wheat)', servingSize: 1, servingUnit: 'piece (60g)', servingWeightG: 60, kcal: 200, proteinG: 5, carbsG: 32, fatG: 7, fiberG: 4 },
   { name: 'Chana Masala (homemade)', servingSize: 200, servingUnit: 'g (1 cup)', kcal: 260, proteinG: 12, carbsG: 40, fatG: 6, fiberG: 10 },
@@ -2027,7 +2026,60 @@ const FOODS: FoodSeed[] = [
   { name: 'Olive Oil', servingSize: 14, servingUnit: 'g (1 tbsp)', servingWeightG: 14, kcal: 120, proteinG: 0, carbsG: 0, fatG: 14, fiberG: 0 },
   // 250 ml x 1.03 g/ml (USDA whole-milk density)
   { name: 'Whole Milk', servingSize: 250, servingUnit: 'ml (1 cup)', servingWeightG: 257.5, kcal: 150, proteinG: 8, carbsG: 12, fatG: 8, fiberG: 0 },
+  // Pakistani & Indian dishes (standard-reference estimates per 100 g unless noted)
+  // Rice dishes
+  { name: 'Beef Pulao', servingSize: 100, servingUnit: 'g', kcal: 165, proteinG: 8, carbsG: 22, fatG: 5, fiberG: 1 },
+  { name: 'Chicken Pulao', servingSize: 100, servingUnit: 'g', kcal: 150, proteinG: 9, carbsG: 21, fatG: 3.5, fiberG: 1 },
+  { name: 'Mutton Pulao', servingSize: 100, servingUnit: 'g', kcal: 175, proteinG: 8, carbsG: 21, fatG: 6, fiberG: 1 },
+  { name: 'Chicken Biryani', servingSize: 100, servingUnit: 'g', kcal: 160, proteinG: 9, carbsG: 20, fatG: 5, fiberG: 1 },
+  { name: 'Beef Biryani', servingSize: 100, servingUnit: 'g', kcal: 170, proteinG: 9, carbsG: 20, fatG: 6, fiberG: 1 },
+  // Curries & stews
+  { name: 'Chicken Karahi', servingSize: 100, servingUnit: 'g', kcal: 140, proteinG: 12, carbsG: 4, fatG: 8, fiberG: 1 },
+  { name: 'Beef Nihari', servingSize: 100, servingUnit: 'g', kcal: 145, proteinG: 11, carbsG: 3, fatG: 10, fiberG: 0.5 },
+  { name: 'Chicken Nihari', servingSize: 100, servingUnit: 'g', kcal: 130, proteinG: 12, carbsG: 3, fatG: 7, fiberG: 0.5 },
+  { name: 'Daal Mash (urad)', servingSize: 100, servingUnit: 'g', kcal: 110, proteinG: 7, carbsG: 15, fatG: 3.5, fiberG: 3 },
+  { name: 'Tarka Daal', servingSize: 100, servingUnit: 'g', kcal: 105, proteinG: 6, carbsG: 16, fatG: 3, fiberG: 3 },
+  { name: 'Palak Gosht', servingSize: 100, servingUnit: 'g', kcal: 95, proteinG: 8, carbsG: 5, fatG: 5, fiberG: 2 },
+  { name: 'Keema Matar', servingSize: 100, servingUnit: 'g', kcal: 130, proteinG: 11, carbsG: 6, fatG: 7, fiberG: 2 },
+  { name: 'Butter Chicken', servingSize: 100, servingUnit: 'g', kcal: 150, proteinG: 10, carbsG: 6, fatG: 10, fiberG: 1 },
+  { name: 'Chicken Tikka Masala', servingSize: 100, servingUnit: 'g', kcal: 135, proteinG: 11, carbsG: 6, fatG: 7, fiberG: 1 },
+  { name: 'Palak Paneer', servingSize: 100, servingUnit: 'g', kcal: 110, proteinG: 6, carbsG: 6, fatG: 7, fiberG: 2 },
+  { name: 'Dal Makhani', servingSize: 100, servingUnit: 'g', kcal: 130, proteinG: 6, carbsG: 14, fatG: 6, fiberG: 3 },
+  // Kebabs & tandoor (per piece with canonical weight)
+  { name: 'Malai Boti', servingSize: 100, servingUnit: 'g', kcal: 160, proteinG: 16, carbsG: 3, fatG: 9, fiberG: 0.5 },
+  // Breads
+  // Snacks & breakfast
+  { name: 'Samosa', servingSize: 1, servingUnit: 'piece (100g)', servingWeightG: 100, kcal: 260, proteinG: 5, carbsG: 30, fatG: 13, fiberG: 3 },
+  { name: 'Masala Dosa', servingSize: 1, servingUnit: 'dosa (150g)', servingWeightG: 150, kcal: 170, proteinG: 4, carbsG: 32, fatG: 3, fiberG: 2 },
+  { name: 'Idli', servingSize: 1, servingUnit: 'piece (40g)', servingWeightG: 40, kcal: 60, proteinG: 2, carbsG: 13, fatG: 0.3, fiberG: 0.5 },
+  // Desserts
+  { name: 'Sooji Halwa', servingSize: 100, servingUnit: 'g', kcal: 340, proteinG: 4, carbsG: 55, fatG: 12, fiberG: 1.5 },
 ];
+
+// Search aliases for the Pakistani & Indian dishes above (romanization
+// variants etc.). Seeded as FoodAlias rows after the FOODS loop.
+const NEW_DISH_ALIASES: Record<string, Array<[string, string]>> = {
+  'Beef Pulao': [['beef pilao', 'en'], ['beef palao', 'en'], ['beef pulav', 'en']],
+  'Chicken Pulao': [['chicken pilao', 'en'], ['chicken palao', 'en']],
+  'Mutton Pulao': [['mutton pilao', 'en'], ['mutton palao', 'en']],
+  'Chicken Biryani': [['chicken biriani', 'en']],
+  'Beef Biryani': [['beef biriani', 'en']],
+  'Chicken Karahi': [['chicken kadahi', 'en'], ['chicken karai', 'en']],
+  'Beef Nihari': [['nihari', 'en']],
+  'Chicken Nihari': [['chicken nihari', 'en']],
+  'Daal Mash (urad)': [['daal mash', 'en'], ['dal mash', 'en']],
+  'Tarka Daal': [['tarka dal', 'en'], ['dal fry', 'en'], ['daal fry', 'en']],
+  'Palak Gosht': [['saag gosht', 'en']],
+  'Keema Matar': [['qeema matar', 'en']],
+  'Butter Chicken': [['murgh makhani', 'en']],
+  'Chicken Tikka Masala': [['tikka masala', 'en']],
+  'Palak Paneer': [['saag paneer', 'en']],
+  'Dal Makhani': [['dal makhani', 'en']],
+  'Malai Boti': [['malai boti', 'en']],
+  'Masala Dosa': [['masala dosa', 'en'], ['dosa', 'en']],
+  'Idli': [['idly', 'en']],
+  'Sooji Halwa': [['suji halwa', 'en'], ['sooji halwa', 'en']],
+};
 
 // ---------------------------------------------------------------------------
 // Runner (idempotent: re-runs against an unchanged DB perform no writes;
@@ -2227,6 +2279,28 @@ async function main() {
     } catch (e) {
       stats.note('food', 'failed');
       console.error(`[seed] FAILED food ${f.name}:`, e);
+    }
+  }
+
+  // Aliases for the Pakistani & Indian dishes added above. Replace wholesale
+  // so re-runs stay idempotent; only touches foods in NEW_DISH_ALIASES.
+  for (const [foodName, aliases] of Object.entries(NEW_DISH_ALIASES)) {
+    try {
+      const food = await prisma.food.findUnique({ where: { name: foodName } });
+      if (!food) {
+        stats.note('food-alias', 'skipped');
+        continue;
+      }
+      await prisma.foodAlias.deleteMany({ where: { foodId: food.id } });
+      if (aliases.length) {
+        await prisma.foodAlias.createMany({
+          data: aliases.map(([alias, language]) => ({ foodId: food.id, alias, language })),
+        });
+      }
+      stats.note('food-alias', 'updated');
+    } catch (e) {
+      stats.note('food-alias', 'failed');
+      console.error(`[seed] FAILED aliases for ${foodName}:`, e);
     }
   }
 
