@@ -110,7 +110,7 @@ describe.skipIf(!HAS_DB)('v21.6 real concurrency proof (PostgreSQL)', () => {
     return { email, token };
   }
 
-  async function createRecipe(token: string, name: string): Promise<{ id: string; contentHash: string; revision: number }> {
+  async function createRecipe(token: string, name: string): Promise<{ id: string; slug: string; contentHash: string; revision: number }> {
     const res = (await recipesPOST(
       authed(
         jsonRequest('http://localhost/api/recipes', 'POST', {
@@ -130,7 +130,7 @@ describe.skipIf(!HAS_DB)('v21.6 real concurrency proof (PostgreSQL)', () => {
     // v21.7: the guard is the (hash, revision) pair (recipe-governance.ts
     // §5b) — a fresh row is at revision 0 (the migration default).
     expect(body.recipe.revision).toBe(0);
-    return { id: body.recipe.id, contentHash: body.recipe.contentHash, revision: body.recipe.revision };
+    return { id: body.recipe.id, slug: body.recipe.slug, contentHash: body.recipe.contentHash, revision: body.recipe.revision };
   }
 
   async function patch(token: string, id: string, body: unknown) {
@@ -171,18 +171,21 @@ describe.skipIf(!HAS_DB)('v21.6 real concurrency proof (PostgreSQL)', () => {
     expect(row).not.toBeNull();
     const winnerChangedPortions = a.status === 200;
     expect(row!.servings).toBe(winnerChangedPortions ? 4 : 2);
-    expect(row!.prepMin).toBe(winnerChangedPortions ? 10 : 33);
+    // Creation defaults prepMin to 0 (not 10); the portions-writer never touches it.
+    expect(row!.prepMin).toBe(winnerChangedPortions ? 0 : 33);
     expect(typeof row!.contentHash).toBe('string');
-    expect(row!.contentHash).not.toBe(contentHash);
+    // portions is material → hash changes; prepMin is metadata-only → hash preserved.
+    if (winnerChangedPortions) expect(row!.contentHash).not.toBe(contentHash);
+    else expect(row!.contentHash).toBe(contentHash);
   });
 
   it('admin verify vs a concurrent material PATCH → the stale verify 409s; invalidated evidence is never resurrected', async () => {
     const { token } = await ownerSession();
-    const { id, contentHash: h1 } = await createRecipe(token, 'V216 Race B');
+    const { id, slug, contentHash: h1 } = await createRecipe(token, 'V216 Race B');
 
     // 1. Admin records a review against (h1, rev 0). The review bumps the
     //    revision to 1 without moving the hash (§5b).
-    const rev = await reviewPostReq(token, id, {
+    const rev = await reviewPostReq(token, slug, {
       action: 'review',
       evidence: REVIEW_EVIDENCE,
       expectedContentHash: h1,
@@ -205,7 +208,7 @@ describe.skipIf(!HAS_DB)('v21.6 real concurrency proof (PostgreSQL)', () => {
     //    and the OLD review state (stale rev 0), carrying a review record
     //    for content that no longer exists → 409. The stale write fails;
     //    it does NOT re-verify the new content.
-    const v = await reviewPostReq(token, id, {
+    const v = await reviewPostReq(token, slug, {
       action: 'verify',
       evidence: VERIFY_EVIDENCE,
       reviewEvidence: REVIEW_EVIDENCE,

@@ -56,3 +56,24 @@ export {
   buildAliasSearchClause,
 } from './alias-normalize.js';
 export type { AliasLanguage, RecipeAliasRow } from './alias-normalize.js';
+
+// V21.8 — seed safety: recipe/exercise seed planning + write application
+// (pure decision logic, unit-testable without PostgreSQL).
+export {
+  SeedStats,
+  applyExerciseSeed,
+  applyRecipeSeed,
+  exerciseSeedMediaIntent,
+  planRecipeSeed,
+  seedMaterialAllergens,
+} from './seed-safety.js';
+export type {
+  AppliedSeedResult,
+  ExerciseSeedInput,
+  NormalizedRecipeSeed,
+  RecipeSeedPlan,
+  SeedIngredientInput,
+  SeedInstructionInput,
+  SeedOutcome,
+  StoredRecipeRow,
+} from './seed-safety.js';

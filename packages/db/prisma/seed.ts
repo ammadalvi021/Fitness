@@ -1,5 +1,14 @@
 // FitFusion AI — database seed (packages/db/prisma/seed.ts).
-// IDEMPOTENT: every record is upserted on its unique key, so re-runs are safe.
+// IDEMPOTENT: re-running the seed against an unchanged DB performs no writes.
+//  - Recipes: create-vs-update is planned per record (see
+//    packages/db/src/seed-safety.ts). Private user-created recipes are never
+//    touched (skipped). Unchanged content leaves verified/review evidence
+//    alone; a material change recomputes contentHash, bumps revision
+//    atomically (conditional on the read revision), invalidates stale
+//    evidence, and re-screens allergens. A per-record report
+//    (created/updated/unchanged/skipped/failed) prints at the end.
+//  - Exercises: mediaType/mediaUrl are only written on create (or when the
+//    seed explicitly carries media) — imported exercise media survives.
 // Run from packages/db:  DATABASE_URL=... npx tsx prisma/seed.ts
 // Seeds: 13 cuisines, ~30 curated recipes, ~50 text-first exercises, ~40 starter foods.
 
@@ -32,6 +41,14 @@ import { fileURLToPath } from 'node:url';
 }
 
 import { PrismaClient } from '@prisma/client';
+// V21.8: seed-safety planning + write application (pure decision logic in
+// src/seed-safety.ts — unit-testable without PostgreSQL).
+import {
+  SeedStats,
+  applyExerciseSeed,
+  applyRecipeSeed,
+  type NormalizedRecipeSeed,
+} from '../src/seed-safety.js';
 import {
   V18_CATEGORIES,
   V18_EXISTING_FOOD_EXTENSIONS,
@@ -809,7 +826,8 @@ const RECIPES: RecipeSeed[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Exercises (text-first technique data; mediaType is always 'none')
+// Exercises (text-first technique data; seed entries carry no media, so
+// mediaType/mediaUrl are only ever written on create — see the runner)
 // ---------------------------------------------------------------------------
 type ExerciseSeed = {
   slug: string;
@@ -828,9 +846,16 @@ type ExerciseSeed = {
   easierVariation: string;
   harderVariation: string;
   safetyNotes: string;
+  /**
+   * V21.8: optional explicit media. When set to a real media value (not
+   * 'none'/null), the seed intentionally sets media on update as well.
+   * Absent = the seed carries no media → existing media (e.g. imported
+   * from an authorized source) is never downgraded on re-runs.
+   */
+  mediaType?: string;
+  mediaUrl?: string | null;
 };
 
-const MEDIA_NONE = { mediaType: 'none', mediaUrl: null } as const;
 
 const EXERCISES: ExerciseSeed[] = [
   {
@@ -2005,23 +2030,42 @@ const FOODS: FoodSeed[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Runner (idempotent upserts)
+// Runner (idempotent: re-runs against an unchanged DB perform no writes;
+// per-record create/update/unchanged/skip/failed is reported at the end)
 // ---------------------------------------------------------------------------
 async function main() {
+  const stats = new SeedStats();
   const cuisineIds = new Map<string, string>();
   for (const c of CUISINES) {
-    const row = await prisma.cuisine.upsert({
-      where: { name: c.name },
-      update: { region: c.region },
-      create: { name: c.name, region: c.region },
-    });
+    const prev = await prisma.cuisine.findUnique({ where: { name: c.name } });
+    let row;
+    if (!prev) {
+      row = await prisma.cuisine.create({ data: { name: c.name, region: c.region } });
+      stats.note('cuisine', 'created');
+    } else if (prev.region !== c.region) {
+      row = await prisma.cuisine.update({
+        where: { id: prev.id },
+        data: { region: c.region },
+      });
+      stats.note('cuisine', 'updated');
+    } else {
+      row = prev;
+      stats.note('cuisine', 'unchanged');
+    }
     cuisineIds.set(c.name, row.id);
   }
 
   for (const r of RECIPES) {
     const cuisineId = cuisineIds.get(r.cuisine);
     if (!cuisineId) throw new Error(`Unknown cuisine referenced by recipe ${r.slug}: ${r.cuisine}`);
-    const data = {
+    // V21.8: the seed no longer blind-upserts material fields. The plan
+    // (create / skip-private / unchanged / metadata-only / material change)
+    // is computed per record in src/seed-safety.ts: unchanged content keeps
+    // verified + review/verification evidence; a material change recomputes
+    // contentHash, bumps revision atomically, invalidates stale evidence,
+    // and re-screens allergens.
+    const seed: NormalizedRecipeSeed = {
+      slug: r.slug,
       title: r.title,
       cuisineId,
       dietCategory: r.dietCategory,
@@ -2030,27 +2074,23 @@ async function main() {
       prepMin: r.prepMin,
       cookMin: r.cookMin,
       difficulty: r.difficulty,
-      ingredients: r.ingredients,
-      instructions: r.instructions,
+      mealType: null,
+      needsReview: false,
+      ingredients: r.ingredients.map((i) => ({ name: i.name, quantity: i.quantity, grams: i.grams })),
+      instructions: r.instructions.map((s) => ({ step: s.step, text: s.text })),
       kcalPerServing: r.kcal,
       proteinPerServing: r.proteinG,
       carbsPerServing: r.carbsG,
       fatPerServing: r.fatG,
       fiberPerServing: r.fiberG,
-      source: 'curated',
-      // V21.2 P8: demoted from the previous true value. These 31 originals
-      // carry hand-written nutrition with NO recorded verification evidence
-      // (see VERIFIED_STANDARD_EVIDENCE in recipe-claims-policy.ts and
-      // docs/recipe-data-quality.md), so the honest flag is false. They are
-      // curated hand-authored estimates — tier 'calculated-estimate'.
-      verified: false,
-      allergens: r.allergens,
+      declaredAllergens: r.allergens,
     };
-    await prisma.recipe.upsert({
-      where: { slug: r.slug },
-      update: data,
-      create: { slug: r.slug, ...data },
-    });
+    try {
+      await applyRecipeSeed(prisma, seed, stats);
+    } catch (e) {
+      stats.note('recipe', 'failed');
+      console.error(`[seed] FAILED recipe ${r.slug}:`, e);
+    }
   }
 
   // V21: batch recipe modules (engine-computed nutrition, pure data).
@@ -2066,7 +2106,14 @@ async function main() {
     for (const r of batch) {
       const cuisineId = cuisineIds.get(r.cuisine);
       if (!cuisineId) throw new Error(`Unknown cuisine referenced by recipe ${r.slug}: ${r.cuisine}`);
-      const data = {
+      // V21.8: same safe write path as the originals (see above). New
+      // recipes are source='curated', verified=false (engine-calculated,
+      // not yet human-reviewed). needsReview comes from each batch entry:
+      // true when the engine hit an UNKNOWN quantity/unit (v21.2 policy —
+      // unknown beats guessing), so 92 recipes are honestly flagged
+      // (reconciled 2026-10-14; see packages/db/prisma/recipe-quality-report.ts).
+      const seed: NormalizedRecipeSeed = {
+        slug: r.slug,
         title: r.title,
         cuisineId,
         dietCategory: r.dietCategory,
@@ -2075,7 +2122,7 @@ async function main() {
         prepMin: r.prepMin,
         cookMin: r.cookMin,
         difficulty: r.difficulty,
-        mealType: r.mealType,
+        mealType: r.mealType ?? null,
         needsReview: r.needsReview,
         ingredients: r.ingredients.map((i: { name: string; quantity: string; grams?: number }) => ({
           name: i.name, quantity: i.quantity, grams: i.grams ?? null,
@@ -2086,20 +2133,25 @@ async function main() {
         carbsPerServing: r1(r.computed.perServing.carbsG),
         fatPerServing: r1(r.computed.perServing.fatG),
         fiberPerServing: r1(r.computed.perServing.fiberG),
-        source: 'curated',
-        verified: false,
-        allergens: r.allergens,
+        declaredAllergens: r.allergens,
       };
-      const recipe = await prisma.recipe.upsert({
-        where: { slug: r.slug },
-        update: data,
-        create: { slug: r.slug, ...data },
-      });
+      let recipeId: string | null = null;
+      try {
+        const result = await applyRecipeSeed(prisma, seed, stats);
+        recipeId = result.id;
+        // Never touch aliases for a failed write — and never for a skipped
+        // (private) recipe either.
+        if (result.status === 'failed' || result.status === 'skipped') recipeId = null;
+      } catch (e) {
+        stats.note('recipe', 'failed');
+        console.error(`[seed] FAILED recipe ${r.slug}:`, e);
+      }
+      if (!recipeId) continue;
       // V21.2: persist seed aliases. Idempotent upsert on the
       // @@unique([recipeId, normalizedAlias]) key — re-running the seed never
       // duplicates aliases. Alias strings come ONLY from the batch modules;
       // nothing is invented here, and identities are never merged across recipes.
-      const aliasRows = buildRecipeAliasRows(recipe.id, r.aliases);
+      const aliasRows = buildRecipeAliasRows(recipeId, r.aliases);
       for (const row of aliasRows) {
         await prisma.recipeAlias.upsert({
           where: {
@@ -2119,36 +2171,24 @@ async function main() {
   console.log(`Seeded ${v21Count} v21 batch recipes (${v21AliasCount} aliases)`);
 
   for (const e of EXERCISES) {
-    const data = {
-      name: e.name,
-      description: e.description,
-      muscleGroups: e.muscleGroups,
-      equipment: e.equipment,
-      difficulty: e.difficulty,
-      exerciseType: e.exerciseType,
-      trainingStyles: e.trainingStyles,
-      homeSuitable: e.homeSuitable,
-      gymSuitable: e.gymSuitable,
-      steps: e.steps,
-      breathing: e.breathing,
-      commonMistakes: e.commonMistakes,
-      easierVariation: e.easierVariation,
-      harderVariation: e.harderVariation,
-      safetyNotes: e.safetyNotes,
-      mediaType: MEDIA_NONE.mediaType,
-      mediaUrl: MEDIA_NONE.mediaUrl,
-    };
-    await prisma.exercise.upsert({
-      where: { slug: e.slug },
-      update: data,
-      create: { slug: e.slug, ...data },
-    });
+    // V21.8: the update never includes mediaType/mediaUrl unless the seed
+    // entry explicitly carries media — exercise media imported from an
+    // authorized source survives repeated seed runs (see
+    // src/seed-safety.ts).
+    try {
+      await applyExerciseSeed(prisma, e, stats);
+    } catch (err) {
+      stats.note('exercise', 'failed');
+      console.error(`[seed] FAILED exercise ${e.slug}:`, err);
+    }
   }
 
   for (const f of FOODS) {
-    await prisma.food.upsert({
-      where: { name: f.name },
-      update: {
+    // V21.8: find-first so the report distinguishes created/updated/
+    // unchanged — a re-run against an unchanged DB performs no writes.
+    try {
+      const prev = await prisma.food.findUnique({ where: { name: f.name } });
+      const updateData = {
         brand: f.brand ?? null,
         servingSize: f.servingSize,
         servingUnit: f.servingUnit,
@@ -2162,22 +2202,32 @@ async function main() {
         fiberG: f.fiberG,
         source: 'seeded',
         verified: true,
-      },
-      create: {
-        name: f.name,
-        brand: f.brand ?? null,
-        servingSize: f.servingSize,
-        servingUnit: f.servingUnit,
-        servingWeightG: f.servingWeightG ?? null,
-        kcal: f.kcal,
-        proteinG: f.proteinG,
-        carbsG: f.carbsG,
-        fatG: f.fatG,
-        fiberG: f.fiberG,
-        source: 'seeded',
-        verified: true,
-      },
-    });
+      };
+      if (!prev) {
+        await prisma.food.create({
+          data: {
+            name: f.name,
+            ...updateData,
+            servingWeightG: f.servingWeightG ?? null,
+          },
+        });
+        stats.note('food', 'created');
+      } else {
+        const changed = Object.entries(updateData).some(
+          ([k, v]) =>
+            JSON.stringify((prev as unknown as Record<string, unknown>)[k]) !== JSON.stringify(v),
+        );
+        if (!changed) {
+          stats.note('food', 'unchanged');
+        } else {
+          await prisma.food.update({ where: { id: prev.id }, data: updateData });
+          stats.note('food', 'updated');
+        }
+      }
+    } catch (e) {
+      stats.note('food', 'failed');
+      console.error(`[seed] FAILED food ${f.name}:`, e);
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -2186,11 +2236,24 @@ async function main() {
   const existingFoodNames = new Set(FOODS.map((f) => f.name));
   const categoryIds = new Map<string, string>();
   for (const c of V18_CATEGORIES) {
-    const row = await prisma.foodCategory.upsert({
-      where: { name: c.name },
-      update: { nameUrdu: c.nameUrdu, sortOrder: c.sortOrder },
-      create: { name: c.name, nameUrdu: c.nameUrdu, sortOrder: c.sortOrder },
-    });
+    // V21.8: find-first so the report distinguishes created/updated/unchanged.
+    const prevCat = await prisma.foodCategory.findUnique({ where: { name: c.name } });
+    let row;
+    if (!prevCat) {
+      row = await prisma.foodCategory.create({
+        data: { name: c.name, nameUrdu: c.nameUrdu, sortOrder: c.sortOrder },
+      });
+      stats.note('foodCategory', 'created');
+    } else if (prevCat.nameUrdu !== c.nameUrdu || prevCat.sortOrder !== c.sortOrder) {
+      row = await prisma.foodCategory.update({
+        where: { id: prevCat.id },
+        data: { nameUrdu: c.nameUrdu, sortOrder: c.sortOrder },
+      });
+      stats.note('foodCategory', 'updated');
+    } else {
+      row = prevCat;
+      stats.note('foodCategory', 'unchanged');
+    }
     categoryIds.set(c.name, row.id);
   }
 
@@ -2233,11 +2296,14 @@ async function main() {
       categoryId: categoryIds.get(f.category) ?? null,
       countryCodes: ['PK'],
     };
+    // V21.8: report created vs updated.
+    const prev = await prisma.food.findUnique({ where: { name: f.name } });
     const food = await prisma.food.upsert({
       where: { name: f.name },
       update: data,
       create: { name: f.name, ...data },
     });
+    stats.note('food', prev ? 'updated' : 'created');
     // Replace aliases + portions wholesale so re-runs stay idempotent.
     await prisma.foodAlias.deleteMany({ where: { foodId: food.id } });
     await prisma.householdPortion.deleteMany({ where: { foodId: food.id } });
@@ -2264,48 +2330,60 @@ async function main() {
   }
 
   for (const f of V18_FOODS) {
-    await seedV18Food(f);
+    try {
+      await seedV18Food(f);
+    } catch (e) {
+      stats.note('food', 'failed');
+      console.error(`[seed] FAILED v18 food ${f.name}:`, e);
+    }
   }
 
   // Extend the 43 pre-existing starter foods (aliases + portions + category),
   // never touching their nutrition values.
   let extendedFoods = 0;
   for (const ext of V18_EXISTING_FOOD_EXTENSIONS) {
-    const food = await prisma.food.findUnique({ where: { name: ext.name } });
-    if (!food) {
-      console.warn(`V18 extension skipped — food not found: ${ext.name}`);
-      continue;
-    }
-    await prisma.food.update({
-      where: { id: food.id },
-      data: {
-        categoryId: ext.category ? (categoryIds.get(ext.category) ?? null) : food.categoryId,
-        countryCodes: ext.countryCodes,
-        basis: food.basis ?? 'Previously seeded starter food — values retained from original seed',
-      },
-    });
-    await prisma.foodAlias.deleteMany({ where: { foodId: food.id } });
-    await prisma.householdPortion.deleteMany({ where: { foodId: food.id } });
-    if (ext.aliases.length) {
-      await prisma.foodAlias.createMany({
-        data: ext.aliases.map(([alias, language]) => ({ foodId: food.id, alias, language })),
+    try {
+      const food = await prisma.food.findUnique({ where: { name: ext.name } });
+      if (!food) {
+        console.warn(`V18 extension skipped — food not found: ${ext.name}`);
+        stats.note('food', 'skipped');
+        continue;
+      }
+      await prisma.food.update({
+        where: { id: food.id },
+        data: {
+          categoryId: ext.category ? (categoryIds.get(ext.category) ?? null) : food.categoryId,
+          countryCodes: ext.countryCodes,
+          basis: food.basis ?? 'Previously seeded starter food — values retained from original seed',
+        },
       });
-      v18Aliases += ext.aliases.length;
+      await prisma.foodAlias.deleteMany({ where: { foodId: food.id } });
+      await prisma.householdPortion.deleteMany({ where: { foodId: food.id } });
+      if (ext.aliases.length) {
+        await prisma.foodAlias.createMany({
+          data: ext.aliases.map(([alias, language]) => ({ foodId: food.id, alias, language })),
+        });
+        v18Aliases += ext.aliases.length;
+      }
+      if (ext.portions.length) {
+        await prisma.householdPortion.createMany({
+          data: ext.portions.map((p, i) => ({
+            foodId: food.id,
+            label: p.label,
+            labelUrdu: p.labelUrdu ?? null,
+            grams: p.grams ?? null,
+            ml: p.ml ?? null,
+            sortOrder: i,
+          })),
+        });
+        v18Portions += ext.portions.length;
+      }
+      extendedFoods++;
+      stats.note('food', 'updated');
+    } catch (e) {
+      stats.note('food', 'failed');
+      console.error(`[seed] FAILED v18 extension ${ext.name}:`, e);
     }
-    if (ext.portions.length) {
-      await prisma.householdPortion.createMany({
-        data: ext.portions.map((p, i) => ({
-          foodId: food.id,
-          label: p.label,
-          labelUrdu: p.labelUrdu ?? null,
-          grams: p.grams ?? null,
-          ml: p.ml ?? null,
-          sortOrder: i,
-        })),
-      });
-      v18Portions += ext.portions.length;
-    }
-    extendedFoods++;
   }
 
   const [cuisines, recipes, exercises, foods, categories, aliases, portions] = await Promise.all([
@@ -2322,6 +2400,13 @@ async function main() {
       `categories=${categories} aliases=${aliases} portions=${portions} ` +
       `(v18 new foods=${v18Foods}, extended existing=${extendedFoods}, v18 aliases=${v18Aliases}, v18 portions=${v18Portions})`,
   );
+  // V21.8: per-record-type report (created / updated / unchanged / skipped / failed).
+  console.log(stats.summary());
+  if (stats.failedTotal() > 0) {
+    // Fail loudly (same contract as before: a failed seed exits non-zero),
+    // but only after every other record was attempted and reported.
+    throw new Error(`Seed finished with ${stats.failedTotal()} failed record(s) — see report above.`);
+  }
 }
 
 main()

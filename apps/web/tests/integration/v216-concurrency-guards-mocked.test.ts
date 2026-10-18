@@ -376,12 +376,12 @@ describe('v21.6 guard enforcement — recipe PATCH', () => {
 
   it('serializeRecipePublic keeps contentHash on the wire (recipe detail GET contract) — null for legacy rows, string for hashed', async () => {
     const hashed = serializeRecipePublic(
-      { contentHash: 'hash-xyz', verified: false, verificationEvidence: null, reviewEvidence: null },
+      { contentHash: 'hash-xyz', verified: false, verificationEvidence: null, reviewEvidence: null, needsReview: false },
       false,
     ) as unknown as { contentHash: unknown };
     expect(hashed.contentHash).toBe('hash-xyz');
     const legacy = serializeRecipePublic(
-      { contentHash: null, verified: false, verificationEvidence: null, reviewEvidence: null },
+      { contentHash: null, verified: false, verificationEvidence: null, reviewEvidence: null, needsReview: false },
       false,
     ) as unknown as { contentHash: unknown };
     expect(legacy.contentHash).toBeNull();

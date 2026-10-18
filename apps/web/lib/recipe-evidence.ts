@@ -24,6 +24,13 @@ export interface RecipeEvidenceInput {
   verified: boolean;
   verificationEvidence: unknown;
   reviewEvidence: unknown;
+  /**
+   * v21.8 (P4): REQUIRED — the canonical tier rule fails closed when this
+   * is true (never 'verified'/'reviewed'), so the serializer cannot be
+   * built without stating the review state. Full Prisma recipe rows always
+   * carry this column; partial test fixtures must state it explicitly.
+   */
+  needsReview: boolean;
 }
 
 export interface ShapedEvidence {
@@ -72,10 +79,16 @@ export function shapeRecipeEvidence(
   isAdmin: boolean,
 ): ShapedEvidence {  const review = asReviewRecord(r.reviewEvidence);
   const verification = asVerificationEvidence(r.verificationEvidence);
+  // v21.8 (P4): needsReview is part of the canonical tier input — a
+  // recipe awaiting review never tiers above 'calculated-estimate', so
+  // the public serializer and the admin review endpoint (which calls
+  // qualityTier directly) always agree. Single source of truth:
+  // qualityTier() in @fitfusion/core.
   const tier = qualityTier({
     verified: r.verified,
     verificationEvidence: verification,
     reviewEvidence: review,
+    needsReview: r.needsReview,
   });
   const shaped: ShapedEvidence = {
     tier,

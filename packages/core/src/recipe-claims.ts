@@ -35,6 +35,14 @@
  *    (all ReviewRecord fields present).
  *  - 'verified': the independent verification process ran with recorded
  *    evidence (see VERIFIED_STANDARD_EVIDENCE) AND a complete review record.
+ *
+ * v21.8 (P4): `needsReview: true` caps the tier at 'calculated-estimate' —
+ * a recipe awaiting review NEVER carries a Verified (or Reviewed) badge,
+ * no matter what the stored evidence claims. needsReview means the
+ * nutrition is incomplete or the content changed since the last check, so
+ * the evidence describes a state that no longer holds. Legacy
+ * inconsistent records (verified evidence + needsReview true) fail closed
+ * here until they are resolved and properly reviewed.
  */
 
 // ---------------------------------------------------------------------------
@@ -304,6 +312,16 @@ export interface QualityTierInput {
   verificationEvidence?: VerificationEvidence | null;
   /** A recorded human review (v21.3 — replaces the old `humanReviewed` boolean). */
   reviewEvidence?: ReviewRecord | null;
+  /**
+   * v21.8 (P4): when true, the tier NEVER rises above
+   * 'calculated-estimate' — not 'verified', not 'reviewed'. needsReview
+   * means the nutrition is incomplete or the content changed since the
+   * last check; stored evidence, however complete, describes a state that
+   * no longer holds. Optional for backward compatibility (absent = the
+   * pre-v21.8 behavior); every serializer MUST pass the real value (see
+   * `RecipeEvidenceInput` in apps/web/lib/recipe-evidence.ts).
+   */
+  needsReview?: boolean;
 }
 
 /**
@@ -314,8 +332,16 @@ export interface QualityTierInput {
  * 'reviewed' requires a complete review record.
  * Everything else is 'calculated-estimate' — the honest default for seed,
  * AI-generated, and engine-calculated recipes.
+ *
+ * v21.8 (P4): `needsReview: true` fails closed to 'calculated-estimate'
+ * FIRST, before any evidence is considered. A recipe awaiting review must
+ * never display a Verified badge while the 'Awaiting review' marker is
+ * shown; legacy inconsistent records (evidence claims verified +
+ * needsReview true) stay capped until they are resolved and properly
+ * reviewed.
  */
 export function qualityTier(r: QualityTierInput): QualityTier {
+  if (r.needsReview === true) return 'calculated-estimate';
   if (r.verified && meetsVerifiedStandard(r.verificationEvidence)) return 'verified';
   if (meetsReviewedStandard(r.reviewEvidence)) return 'reviewed';
   return 'calculated-estimate';

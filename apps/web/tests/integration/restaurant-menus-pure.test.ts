@@ -18,7 +18,7 @@ describe('estimateFromRecipe', () => {
   it('sums ingredients and adds explicit frying oil with an assumption', () => {
     const est = estimateFromRecipe({
       ingredients: [
-        { name: 'chicken breast', grams: 200, kcalPer100g: 165, proteinPer100g: 31 },
+        { name: 'chicken breast', grams: 200, kcalPer100g: 165, proteinPer100g: 31, carbsPer100g: 0, fatPer100g: 3.6, fiberPer100g: 0 },
       ],
       portionGrams: 200,
       cookingMethod: 'fried',
@@ -35,7 +35,7 @@ describe('estimateFromRecipe', () => {
 
   it('widens the range and records an assumption when frying with unquantified oil', () => {
     const est = estimateFromRecipe({
-      ingredients: [{ name: 'potato', grams: 150, kcalPer100g: 77 }],
+      ingredients: [{ name: 'potato', grams: 150, kcalPer100g: 77, proteinPer100g: 2, carbsPer100g: 17, fatPer100g: 0.1, fiberPer100g: 2.2 }],
       portionGrams: 150,
       cookingMethod: 'deep fried',
     });
@@ -47,7 +47,7 @@ describe('estimateFromRecipe', () => {
 
   it('scales totals to the stated portion weight and notes it', () => {
     const est = estimateFromRecipe({
-      ingredients: [{ name: 'rice', grams: 100, kcalPer100g: 130 }],
+      ingredients: [{ name: 'rice', grams: 100, kcalPer100g: 130, proteinPer100g: 2.7, carbsPer100g: 28, fatPer100g: 0.3, fiberPer100g: 0.4 }],
       portionGrams: 250,
       cookingMethod: 'steamed',
     });
@@ -59,7 +59,7 @@ describe('estimateFromRecipe', () => {
     const est = estimateFromRecipe({
       ingredients: [
         { name: '', grams: 0, kcalPer100g: 0 },
-        { name: 'lentils', grams: 80, kcalPer100g: 116 },
+        { name: 'lentils', grams: 80, kcalPer100g: 116, proteinPer100g: 9, carbsPer100g: 20, fatPer100g: 0.4, fiberPer100g: 8 },
       ],
       portionGrams: 80,
     });

@@ -219,13 +219,21 @@ async function main(): Promise<void> {
       `batch size ${opts.batchSize}, targeting recipes with contentHash = null`,
   );
 
-  // Cursor pagination over { contentHash: null }. The cursor (not offset)
-  // keeps dry runs finite: dry-run rows are never "consumed" by a write,
-  // so offset pagination would loop forever.
-  let cursor: string | undefined;
+  // Pagination over { contentHash: null } using an exclusive id range
+  // (id > lastSeenId). A Prisma cursor + skip:1 is WRONG here: the cursor
+  // row leaves the null-hash result set the moment its hash is written,
+  // so OFFSET 1 would skip a legitimate unprocessed row (proven live:
+  // batch-size 200 over 270 rows silently dropped exactly one row).
+  // The exclusive range is correct in both modes: ids are unique and
+  // immutable, and dry-run rows are never "consumed", so the loop still
+  // terminates (empty page).
+  let lastSeenId: string | undefined;
   for (;;) {
     const batch = await prisma.recipe.findMany({
-      where: { contentHash: null },
+      where: {
+        contentHash: null,
+        ...(lastSeenId ? { id: { gt: lastSeenId } } : {}),
+      },
       select: {
         id: true,
         slug: true,
@@ -238,7 +246,6 @@ async function main(): Promise<void> {
       },
       orderBy: { id: 'asc' },
       take: opts.batchSize,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     if (batch.length === 0) break;
 
@@ -292,7 +299,7 @@ async function main(): Promise<void> {
         });
       }
     }
-    cursor = batch[batch.length - 1].id;
+    lastSeenId = batch[batch.length - 1].id;
     if (batch.length < opts.batchSize) break;
   }
 

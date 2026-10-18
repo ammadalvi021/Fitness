@@ -481,6 +481,14 @@ export default function RecipesPage() {
           <p className="t-body font-medium" id="allergen-label">
             Exclude allergens
           </p>
+          {/* v21.8 (P3): the exclusion is conservative — recipes that were
+              never allergen-screened are hidden too, and screening is
+              name-based only (not an allergy-safety guarantee). */}
+          <p className="t-meta mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Excluding an allergen also hides recipes that were never
+            allergen-screened. Screening is name-based only — not an
+            allergy-safety guarantee.
+          </p>
           <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="allergen-label">
             {(meta?.allergens ?? []).map(({ allergen, count }) => {
               const on = f.excludeAllergens.includes(allergen);

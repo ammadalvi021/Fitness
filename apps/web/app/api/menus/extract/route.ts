@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@fitfusion/db';
 import { analyzeFoodImage } from '@fitfusion/ai';
 import { requireUser } from '@/lib/auth';
-import { IMAGE_MIMES, UploadError, saveUpload } from '@/lib/storage';
+import { UploadError } from '@/lib/storage';
+import { extractValidatedImage } from '@/lib/image-validate';
+import { saveOwnedUpload, tempRetentionMs } from '@/lib/uploads';
 import { apiError, apiOk } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
@@ -17,29 +20,38 @@ const EXTRACT_HINTS =
  * Upload a menu photo or order screenshot (multipart `image` field).
  * Returns the AI-extracted item names for the user to review and confirm —
  * nothing is written to any restaurant menu here.
+ *
+ * Hardening (v21.8 P4): same upload preamble as the food scanner — size cap
+ * enforced before buffering (413), magic-byte + dimension validation
+ * (spoofed types → 415, corrupt bytes → 400), and the AI call wrapped so a
+ * throw becomes a clean 502 instead of an unhandled error.
  */
 export async function POST(req: NextRequest) {
   const s = await requireUser(req);
   if (s instanceof NextResponse) return s;
 
-  let form: FormData;
+  let input;
   try {
-    form = await req.formData();
-  } catch {
-    return apiError('invalid_request', 'Expected multipart form data with an "image" field', 400);
+    input = await extractValidatedImage(req, 'image');
+  } catch (e) {
+    if (e instanceof UploadError) {
+      return apiError(e.code, e.message, e.status);
+    }
+    throw e;
   }
-  const file = form.get('image');
-  if (!(file instanceof File)) {
-    return apiError('validation_error', 'Missing "image" file in form data', 400);
-  }
-  if (!IMAGE_MIMES.includes(file.type)) {
-    return apiError('unsupported_media_type', `Unsupported image type: ${file.type || 'unknown'}`, 415);
-  }
+  const { buffer, mime } = input;
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   let upload;
   try {
-    upload = await saveUpload(buffer, { mime: file.type, prefix: 'menus' });
+    // Menu extracts are transient by retention policy: the extracted text
+    // is returned to the client and no record keeps the image, so it
+    // becomes purge-eligible after the configured temp window.
+    upload = await saveOwnedUpload(prisma, s.user.id, buffer, {
+      mime,
+      prefix: 'menus',
+      purpose: 'menu_extract',
+      ttlMs: tempRetentionMs(),
+    });
   } catch (e) {
     if (e instanceof UploadError) {
       return apiError(e.code, e.message, e.status);
@@ -47,9 +59,16 @@ export async function POST(req: NextRequest) {
     throw e;
   }
 
-  const result = await analyzeFoodImage(buffer.toString('base64'), file.type, {
-    hints: EXTRACT_HINTS,
-  });
+  let result;
+  try {
+    result = await analyzeFoodImage(buffer.toString('base64'), mime, {
+      hints: EXTRACT_HINTS,
+    });
+  } catch {
+    // The upload is already transient (ttlMs above), so no orphan risk —
+    // just return a clean error instead of an unhandled throw.
+    return apiError('ai_error', 'Menu extraction failed', 502);
+  }
 
   if (result.status === 'not_configured') {
     return apiOk({

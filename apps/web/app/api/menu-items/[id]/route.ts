@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/admin';
 import { apiError, apiOk, zodMessage } from '@/lib/server-api';
 import {
   MenuItemBodySchema,
+  menuPatchHasMaterialChange,
   validateMenuItemHonesty,
 } from '@/lib/menu-api-schema';
 
@@ -56,7 +57,25 @@ export async function PATCH(
   for (const [k, v] of Object.entries(fields)) {
     if (v !== undefined) data[k] = v ?? null;
   }
-  if (verify) data.lastVerifiedAt = new Date();
+
+  // P5 (v21.8): a material change invalidates any prior verification, unless
+  // the same request explicitly performs a new verification afterwards
+  // (verify:true establishes a fresh review of the changed item).
+  const materialChanged = menuPatchHasMaterialChange(existing, fields);
+  if (verify) {
+    // A verification stamp is meaningless — and a laundering vector — on an
+    // item with no nutrition data, so refuse it outright.
+    if (nextStatus === 'unavailable') {
+      return apiError(
+        'validation_error',
+        'Cannot verify an item with unavailable nutrition — there is nothing to verify.',
+        400,
+      );
+    }
+    data.lastVerifiedAt = new Date();
+  } else if (materialChanged) {
+    data.lastVerifiedAt = null;
+  }
   if (Object.keys(data).length === 0) {
     return apiError('validation_error', 'Nothing to update', 400);
   }

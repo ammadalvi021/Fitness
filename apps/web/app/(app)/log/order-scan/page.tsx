@@ -255,7 +255,7 @@ export default function OrderScanPage() {
     <div>
       <PageHeader
         title="Scan a menu"
-        subtitle="Photograph a restaurant menu or order screenshot. Items are extracted for your review — you confirm each one before anything is saved."
+        subtitle="Photograph a restaurant menu or order screenshot. Items are extracted for your review — confirming sends them for admin review; they appear on the shared menu only after approval."
       />
 
       {/* Restaurant picker */}
@@ -419,7 +419,7 @@ export default function OrderScanPage() {
                       </>
                     ) : (
                       <>
-                        Confirm & save <ChevronRight size={16} />
+                        Confirm & submit for review <ChevronRight size={16} />
                       </>
                     )}
                   </LuxButton>
@@ -439,8 +439,13 @@ export default function OrderScanPage() {
         <GlassPanel className="p-6">
           <h2 className="text-lg font-semibold" style={{ color: "var(--text)" }}>
             <Check size={18} className="mr-2 inline" style={{ color: "var(--success)" }} />
-            {created.length} item{created.length === 1 ? "" : "s"} saved to the menu
+            {created.length} item{created.length === 1 ? "" : "s"} submitted for review
           </h2>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+            Your submissions are private for now. An administrator reviews each dish, portion,
+            and nutrition assumption — approved items are then published to the restaurant&apos;s
+            shared menu.
+          </p>
           <div className="mt-4 space-y-2">
             {created.map((it) => (
               <div key={it.id} className="flex items-center justify-between gap-3 text-sm">

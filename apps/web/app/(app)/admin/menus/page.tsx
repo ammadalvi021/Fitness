@@ -40,6 +40,26 @@ interface QueueItem {
   };
 }
 
+interface SubmissionItem {
+  id: string;
+  name: string;
+  portion: string | null;
+  kcal: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+  fiberG: number | null;
+  nutritionStatus: string;
+  assumptions: string[];
+  source: string | null;
+  matchedFoodId: string | null;
+  status: string;
+  submittedAt: string;
+  reviewNote: string | null;
+  submitter: { id: string; email: string; name: string | null };
+  restaurant: { id: string; name: string };
+}
+
 interface MenuItem {
   id: string;
   name: string;
@@ -76,6 +96,11 @@ export default function AdminMenusPage() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [queueError, setQueueError] = useState<string | null>(null);
 
+  // v21.8 P2 — private customer submissions awaiting approval before publication.
+  const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<SubmissionItem | null>(null);
+
   const [restaurantId, setRestaurantId] = useState("");
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -103,10 +128,30 @@ export default function AdminMenusPage() {
           setAdmin(true);
         }
       });
+    api<{ submissions: SubmissionItem[] }>("/api/menu-submissions?status=pending")
+      .then((data) => {
+        if (cancelled) return;
+        setSubmissions(data.submissions ?? []);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setSubError(e instanceof ApiError ? e.message : "Couldn't load submissions");
+      });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function refreshSubmissions() {
+    try {
+      const data = await api<{ submissions: SubmissionItem[] }>(
+        "/api/menu-submissions?status=pending",
+      );
+      setSubmissions(data.submissions ?? []);
+    } catch {
+      /* keep old queue */
+    }
+  }
 
   async function refreshQueue() {
     try {
@@ -229,6 +274,70 @@ export default function AdminMenusPage() {
         )}
       </section>
 
+      {/* ---- pending menu submissions (private until approved) ---- */}
+      <section className="mb-8">
+        <h2 className="mb-3 text-lg font-semibold" style={{ color: "var(--text)" }}>
+          Pending menu submissions ({submissions.length})
+        </h2>
+        <p className="mb-3 text-xs" style={{ color: "var(--text-secondary)" }}>
+          Customer menu-photo submissions stay private until approved here. Approving publishes
+          the item to the restaurant&apos;s shared menu.
+        </p>
+        {subError && (
+          <p className="mb-3 text-sm" style={{ color: "var(--error)" }}>
+            {subError}
+          </p>
+        )}
+        {submissions.length === 0 ? (
+          <EmptyStateLux
+            icon={<BadgeCheck size={28} />}
+            title="No pending submissions"
+            message="Nothing is waiting for review right now."
+          />
+        ) : (
+          <div className="space-y-3">
+            {submissions.map((sub) => (
+              <GlassPanel key={sub.id} className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+                      {sub.name}{" "}
+                      <span className="font-normal" style={{ color: "var(--text-secondary)" }}>
+                        @ {sub.restaurant.name}
+                        {sub.portion ? ` · ${sub.portion}` : ""}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                      {sub.kcal !== null ? `${Math.round(sub.kcal)} kcal` : "no kcal"},{" "}
+                      <MenuStatusBadge status={sub.nutritionStatus} />
+                      {" · "}source: {sub.source ?? "—"}
+                      {" · "}from {sub.submitter.email} ·{" "}
+                      {new Date(sub.submittedAt).toLocaleString()}
+                    </p>
+                    {Array.isArray(sub.assumptions) && sub.assumptions.length > 0 && (
+                      <ul className="mt-1 list-disc pl-5 text-xs" style={{ color: "var(--text-secondary)" }}>
+                        {sub.assumptions.map((a, i) => (
+                          <li key={i}>{a}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <LuxButton
+                      variant="secondary"
+                      className="px-4 py-1.5 text-sm"
+                      onClick={() => setReviewTarget(sub)}
+                    >
+                      <Check size={14} /> Review
+                    </LuxButton>
+                  </div>
+                </div>
+              </GlassPanel>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* ---- menu item management ---- */}
       <section>
         <h2 className="mb-3 text-lg font-semibold" style={{ color: "var(--text)" }}>
@@ -294,7 +403,12 @@ export default function AdminMenusPage() {
                     variant="secondary"
                     className="px-3 py-1.5 text-sm"
                     onClick={() => verifyItem(item)}
-                    title="Stamp as verified now"
+                    title={
+                      item.nutritionStatus === "unavailable"
+                        ? "Nothing to verify — nutrition is unavailable"
+                        : "Stamp as verified now"
+                    }
+                    disabled={item.nutritionStatus === "unavailable"}
                   >
                     <BadgeCheck size={14} /> Verify
                   </LuxButton>
@@ -324,6 +438,23 @@ export default function AdminMenusPage() {
             onDone={async () => {
               setResolveTarget(null);
               await refreshQueue();
+            }}
+          />
+        )}
+      </Modal>
+
+      {/* ---- review submission modal ---- */}
+      <Modal
+        open={reviewTarget !== null}
+        onClose={() => setReviewTarget(null)}
+        title="Review menu submission"
+      >
+        {reviewTarget && (
+          <SubmissionReviewForm
+            submission={reviewTarget}
+            onDone={async () => {
+              setReviewTarget(null);
+              await refreshSubmissions();
             }}
           />
         )}
@@ -435,6 +566,84 @@ function ResolveForm({
   );
 }
 
+/* ---------- review a menu submission (approve -> publish / reject) ---------- */
+
+function SubmissionReviewForm({
+  submission,
+  onDone,
+}: {
+  submission: SubmissionItem;
+  onDone: () => void;
+}) {
+  const [reviewNote, setReviewNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function decide(action: "approve" | "reject") {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/menu-submissions/${submission.id}`, {
+        method: "PATCH",
+        body: { action, reviewNote: reviewNote.trim() || undefined },
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Couldn't record the decision");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-semibold" style={{ color: "var(--text)" }}>
+        {submission.name}{" "}
+        <span className="font-normal" style={{ color: "var(--text-secondary)" }}>
+          @ {submission.restaurant.name}
+          {submission.portion ? ` · ${submission.portion}` : ""}
+        </span>
+      </p>
+      <p className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+        {submission.kcal !== null ? `${Math.round(submission.kcal)} kcal` : "no kcal"},{" "}
+        <MenuStatusBadge status={submission.nutritionStatus} />
+        {" · "}source: {submission.source ?? "—"} · from {submission.submitter.email}
+      </p>
+      {Array.isArray(submission.assumptions) && submission.assumptions.length > 0 && (
+        <ul className="mt-2 list-disc pl-5 text-xs" style={{ color: "var(--text-secondary)" }}>
+          {submission.assumptions.map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
+      )}
+      <Field label="Review note (optional)" className="mt-4">
+        <Textarea
+          value={reviewNote}
+          onChange={(e) => setReviewNote(e.target.value)}
+          rows={2}
+          placeholder="Why approve or reject…"
+        />
+      </Field>
+      {error && (
+        <p className="mt-2 text-sm" style={{ color: "var(--error)" }}>
+          {error}
+        </p>
+      )}
+      <div className="mt-4 flex justify-end gap-2">
+        <LuxButton variant="ghost" onClick={() => decide("reject")} disabled={busy}>
+          <X size={14} /> Reject
+        </LuxButton>
+        <LuxButton onClick={() => decide("approve")} disabled={busy}>
+          <Check size={14} /> Approve & publish
+        </LuxButton>
+      </div>
+      <p className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+        Approving publishes this item to the restaurant&apos;s shared menu.
+      </p>
+    </div>
+  );
+}
+
 /* ---------- add / edit menu item (with estimate calculator) ---------- */
 
 function ItemForm({
@@ -477,7 +686,12 @@ function ItemForm({
 
   function runEstimate() {
     const est = estimateFromRecipe({
-      ingredients: ingredients.filter((i) => i.name.trim() && i.grams > 0),
+      // Only drop truly blank placeholder rows; let the estimator classify
+      // named/incomplete rows so problems surface instead of silently
+      // disappearing from the total.
+      ingredients: ingredients.filter(
+        (i) => i.name.trim() || i.grams !== 0 || i.kcalPer100g !== 0,
+      ),
       portionGrams: Number(portionGrams) || 0,
       cookingMethod: cookingMethod || undefined,
       oilGrams: Number(oilGrams) || 0,
@@ -486,7 +700,7 @@ function ItemForm({
   }
 
   function applyEstimate() {
-    if (!estimate) return;
+    if (!estimate || !estimate.complete) return;
     setKcal(String(Math.round(estimate.kcalBest)));
     setProteinG(String(estimate.proteinG));
     setCarbsG(String(estimate.carbsG));
@@ -654,7 +868,7 @@ function ItemForm({
                   className="w-20"
                 />
                 <Input
-                  value={ing.kcalPer100g ? String(ing.kcalPer100g) : ""}
+                  value={ing.kcalPer100g == null ? "" : String(ing.kcalPer100g)}
                   onChange={(e) => {
                     const next = [...ingredients];
                     next[i] = { ...next[i], kcalPer100g: Number(e.target.value) || 0 };
@@ -663,7 +877,31 @@ function ItemForm({
                   placeholder="kcal/100g"
                   inputMode="decimal"
                   className="w-24"
+                  title="kcal per 100 g (0 = known zero, e.g. water)"
                 />
+                {(
+                  [
+                    ["proteinPer100g", "P/100g"],
+                    ["carbsPer100g", "C/100g"],
+                    ["fatPer100g", "F/100g"],
+                    ["fiberPer100g", "Fib/100g"],
+                  ] as const
+                ).map(([key, placeholder]) => (
+                  <Input
+                    key={key}
+                    value={ing[key] == null ? "" : String(ing[key])}
+                    onChange={(e) => {
+                      const next = [...ingredients];
+                      const v = e.target.value.trim() === "" ? undefined : Number(e.target.value) || 0;
+                      next[i] = { ...next[i], [key]: v };
+                      setIngredients(next);
+                    }}
+                    placeholder={placeholder}
+                    inputMode="decimal"
+                    className="w-20"
+                    title={`${placeholder.replace("/100g", "")} per 100 g (0 = known zero; blank = unknown)`}
+                  />
+                ))}
                 <button
                   type="button"
                   onClick={() => setIngredients(ingredients.filter((_, j) => j !== i))}
@@ -701,7 +939,7 @@ function ItemForm({
             <LuxButton variant="secondary" className="px-4 py-1.5 text-sm" onClick={runEstimate}>
               Calculate estimate
             </LuxButton>
-            {estimate && (
+            {estimate && estimate.complete && (
               <div className="rounded-xl p-3 text-sm" style={{ backgroundColor: "color-mix(in srgb, var(--warning) 10%, transparent)" }}>
                 <p style={{ color: "var(--text)" }}>
                   <strong>
@@ -717,6 +955,34 @@ function ItemForm({
                 <LuxButton className="mt-2 px-4 py-1.5 text-sm" onClick={applyEstimate}>
                   Use this estimate
                 </LuxButton>
+              </div>
+            )}
+            {estimate && !estimate.complete && (
+              <div className="rounded-xl border p-3 text-sm" style={{ borderColor: "var(--error)", backgroundColor: "color-mix(in srgb, var(--error) 8%, transparent)" }}>
+                <p className="font-semibold" style={{ color: "var(--error)" }}>
+                  <ShieldAlert size={14} className="mr-1 inline" />
+                  Incomplete estimate — {estimate.problems.length} ingredient row(s) need correction
+                </p>
+                <p className="mt-1 text-xs" style={{ color: "var(--text)" }}>
+                  The subtotal below covers only the valid rows and is{" "}
+                  <strong>not</strong> the dish total. Fix the rows, then recalculate.
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs" style={{ color: "var(--text)" }}>
+                  {estimate.problems.map((p, i) => (
+                    <li key={i}>
+                      <strong>Row {p.row}{p.ingredient ? ` (“${p.ingredient}”)` : ""}:</strong>{" "}
+                      {p.reason}
+                      {p.fields.length > 0 && (
+                        <span className="mt-0.5 block" style={{ color: "var(--text-secondary)" }}>
+                          Missing fields: {p.fields.join(", ")}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+                  Partial subtotal of valid rows: {Math.round(estimate.kcalBest)} kcal — do not use as the item&apos;s nutrition.
+                </p>
               </div>
             )}
           </div>

@@ -41,10 +41,13 @@ model User {
   workoutSessions    WorkoutSession[]
   personalRecords    PersonalRecord[]
   foodScans          FoodScan[]
+  uploads            Upload[]
   coachConversations CoachConversation[]
   dataExports        DataExport[]
   recipes            Recipe[]
   menuCorrections    MenuCorrection[]
+  submittedMenuItems MenuSubmission[] @relation("MenuSubmissionSubmitter")
+  reviewedMenuItems  MenuSubmission[] @relation("MenuSubmissionReviewer")
   healthConnections  HealthConnection[]
 }
 
@@ -592,6 +595,35 @@ model DataExport {
 }
 
 // ---------------------------------------------------------------------------
+// V21.8 — Upload ownership registry: every file written through
+// lib/storage is recorded here with its uploader + intended purpose at
+// upload time, so GET /api/uploads/[key] can authorize by ownership
+// instead of mere authentication. `expiresAt` implements the retention
+// policy: transient uploads (menu extraction, failed/not-configured
+// analysis) expire after UPLOAD_TEMP_RETENTION_HOURS (default 24h) and
+// are purged by the admin-gated POST /api/uploads/purge; uploads tied to
+// a user record (scan, data_export) have no expiry and live until the
+// record / account is deleted.
+// ---------------------------------------------------------------------------
+
+model Upload {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  userId    String
+  // "scan" | "menu_extract" | "data_export"
+  purpose   String
+  mime      String
+  byteSize  Int
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ---------------------------------------------------------------------------
 // V18 — Location-aware food database: taxonomy, aliases, portions
 // ---------------------------------------------------------------------------
 
@@ -668,6 +700,7 @@ model Restaurant {
   createdAt       DateTime  @default(now())
 
   menuItems RestaurantMenuItem[]
+  menuSubmissions MenuSubmission[]
 
   @@index([city])
 }
@@ -710,6 +743,48 @@ model MenuCorrection {
   user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([menuItemId])
+}
+
+// ---------------------------------------------------------------------------
+// V21.8 — Menu submissions (P2): customer menu-photo submissions stay
+// PRIVATE until an admin reviews and approves them. Approving publishes a
+// RestaurantMenuItem copy; pending/rejected submissions never appear in the
+// public GET /api/restaurants/[id]/menu response.
+// ---------------------------------------------------------------------------
+
+model MenuSubmission {
+  id              String    @id @default(cuid())
+  restaurantId    String
+  name            String
+  description     String?
+  portion         String?
+  kcal            Float?
+  proteinG        Float?
+  carbsG          Float?
+  fatG            Float?
+  fiberG          Float?
+  // same value set as RestaurantMenuItem.nutritionStatus
+  nutritionStatus String    @default("unavailable")
+  assumptions     Json?
+  source          String?
+  matchedFoodId   String?
+  // "pending" | "approved" | "rejected"
+  status          String    @default("pending")
+  submittedBy     String
+  submittedAt     DateTime  @default(now())
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNote      String?
+  // RestaurantMenuItem id created when this submission was approved
+  publishedItemId String?
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  submitter  User       @relation("MenuSubmissionSubmitter", fields: [submittedBy], references: [id], onDelete: Cascade)
+  reviewer   User?      @relation("MenuSubmissionReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId])
+  @@index([status])
+  @@index([submittedBy])
 }
 
 // ---------------------------------------------------------------------------

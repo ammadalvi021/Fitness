@@ -44,7 +44,7 @@ describe('estimateFromRecipe', () => {
   it('sums ingredients and adds explicit frying oil with an assumption', () => {
     const est = estimateFromRecipe({
       ingredients: [
-        { name: 'chicken breast', grams: 200, kcalPer100g: 165, proteinPer100g: 31 },
+        { name: 'chicken breast', grams: 200, kcalPer100g: 165, proteinPer100g: 31, carbsPer100g: 0, fatPer100g: 3.6, fiberPer100g: 0 },
       ],
       portionGrams: 200,
       cookingMethod: 'fried',
@@ -61,7 +61,7 @@ describe('estimateFromRecipe', () => {
 
   it('widens the range and records an assumption when frying with unquantified oil', () => {
     const est = estimateFromRecipe({
-      ingredients: [{ name: 'potato', grams: 150, kcalPer100g: 77 }],
+      ingredients: [{ name: 'potato', grams: 150, kcalPer100g: 77, proteinPer100g: 2, carbsPer100g: 17, fatPer100g: 0.1, fiberPer100g: 2.2 }],
       portionGrams: 150,
       cookingMethod: 'deep fried',
     });
@@ -73,7 +73,7 @@ describe('estimateFromRecipe', () => {
 
   it('scales totals to the stated portion weight and notes it', () => {
     const est = estimateFromRecipe({
-      ingredients: [{ name: 'rice', grams: 100, kcalPer100g: 130 }],
+      ingredients: [{ name: 'rice', grams: 100, kcalPer100g: 130, proteinPer100g: 2.7, carbsPer100g: 28, fatPer100g: 0.3, fiberPer100g: 0.4 }],
       portionGrams: 250,
       cookingMethod: 'steamed',
     });
@@ -85,7 +85,7 @@ describe('estimateFromRecipe', () => {
     const est = estimateFromRecipe({
       ingredients: [
         { name: '', grams: 0, kcalPer100g: 0 },
-        { name: 'lentils', grams: 80, kcalPer100g: 116 },
+        { name: 'lentils', grams: 80, kcalPer100g: 116, proteinPer100g: 9, carbsPer100g: 20, fatPer100g: 0.4, fiberPer100g: 8 },
       ],
       portionGrams: 80,
     });
@@ -106,6 +106,7 @@ let adminToken = '';
 let restaurantId = '';
 const createdFoodIds: string[] = [];
 let createdMenuItemIds: string[] = [];
+const createdSubmissionIds: string[] = [];
 
 beforeAll(async () => {
   const userEmail = uniqueEmail('ff-menu-user');
@@ -139,6 +140,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  for (const id of createdSubmissionIds) {
+    await prisma.menuSubmission.delete({ where: { id } }).catch(() => {});
+  }
   for (const id of createdMenuItemIds) {
     await prisma.restaurantMenuItem.delete({ where: { id } }).catch(() => {});
   }
@@ -484,7 +488,7 @@ describe('menu extract -> confirm', () => {
     expect(res.status).toBe(415);
   });
 
-  it('unmatched items are saved as unavailable with NO guessed kcal', async () => {
+  it('unmatched items are stored as pending submissions, unavailable, with NO guessed kcal', async () => {
     const res = await confirmPOST(
       authed(
         jsonRequest('http://localhost/api/menus/confirm', 'POST', {
@@ -498,13 +502,20 @@ describe('menu extract -> confirm', () => {
     const body = await readJson(res);
     expect(body.items).toHaveLength(1);
     const item = body.items[0];
+    expect(item.status).toBe('pending');
     expect(item.nutritionStatus).toBe('unavailable');
     expect(item.kcal).toBeNull();
     expect(item.source).toBe('menu_photo');
-    createdMenuItemIds.push(item.id);
+    createdSubmissionIds.push(item.id);
+
+    // v21.8 P2: a customer confirm must NOT publish to the shared menu.
+    const published = await prisma.restaurantMenuItem.count({
+      where: { restaurantId, name: 'Chef Special Platter' },
+    });
+    expect(published).toBe(0);
   });
 
-  it('matched items inherit the food record numbers as a photo estimate', async () => {
+  it('matched items are stored as pending photo estimates (not published)', async () => {
     const res = await confirmPOST(
       authed(
         jsonRequest('http://localhost/api/menus/confirm', 'POST', {
@@ -516,12 +527,18 @@ describe('menu extract -> confirm', () => {
     );
     expect(res.status).toBe(201);
     const item = (await readJson(res)).items[0];
+    expect(item.status).toBe('pending');
     expect(item.nutritionStatus).toBe('menu_photo_estimate');
     expect(item.kcal).toBe(420);
     expect(item.proteinG).toBe(28);
     const assumptions: string[] = Array.isArray(item.assumptions) ? item.assumptions : [];
     expect(assumptions.some((a) => a.includes('Matched by the user'))).toBe(true);
-    createdMenuItemIds.push(item.id);
+    createdSubmissionIds.push(item.id);
+
+    const published = await prisma.restaurantMenuItem.count({
+      where: { restaurantId, name: 'Chicken Karahi' },
+    });
+    expect(published).toBe(0);
   });
 
   it('rejects unknown restaurant and unknown matched food', async () => {

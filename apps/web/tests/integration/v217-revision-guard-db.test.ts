@@ -125,6 +125,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
     expect(body.recipe.revision).toBe(0);
     return {
       id: body.recipe.id as string,
+      slug: body.recipe.slug as string,
       contentHash: body.recipe.contentHash as string,
       revision: body.recipe.revision as number,
     };
@@ -180,7 +181,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
       expect(row!.revision).toBe(1);
       const winnerChangedPortions = a.status === 200;
       expect(row!.servings).toBe(winnerChangedPortions ? 4 : 2);
-      expect(row!.prepMin).toBe(winnerChangedPortions ? 10 : 33);
+      expect(row!.prepMin).toBe(winnerChangedPortions ? 0 : 33); // creation defaults prepMin to 0
     } finally {
       restore();
     }
@@ -189,12 +190,12 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
   it('clear vs verify race: the verify lands, the stale clear (same hash, old revision) 409s — the verification is NOT undone', async () => {
     const { token, restore } = await adminSession();
     try {
-      const { id, contentHash } = await createRecipe(token, 'V217 Race B');
-      const prefill = await reviewGetReq(token, id);
+      const { id, slug, contentHash } = await createRecipe(token, 'V217 Race B');
+      const prefill = await reviewGetReq(token, slug);
       expect(prefill.status).toBe(200);
 
       // Admin 1 records a review against (hash, rev 0) → rev 1, hash unchanged.
-      const rev = await reviewPostReq(token, id, {
+      const rev = await reviewPostReq(token, slug, {
         action: 'review',
         evidence: REVIEW_EVIDENCE,
         expectedContentHash: contentHash,
@@ -205,7 +206,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
       expect(rev.body.recipe.contentHash).toBe(contentHash);
 
       // Admin 2's verify — holding the same (hash, rev 1) — lands → rev 2.
-      const ver = await reviewPostReq(token, id, {
+      const ver = await reviewPostReq(token, slug, {
         action: 'verify',
         evidence: VERIFY_EVIDENCE,
         expectedContentHash: contentHash,
@@ -219,7 +220,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
       // never moved — verify touches no content — so under the hash-only
       // v21.6 guard this clear would have LANDED and silently undone the
       // verification. With the revision token it 409s.
-      const clr = await reviewPostReq(token, id, {
+      const clr = await reviewPostReq(token, slug, {
         action: 'clear',
         expectedContentHash: contentHash,
         expectedRevision: 1,
@@ -239,9 +240,9 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
   it('review vs clear race: the clear lands, the stale review 409s — the cleared state stays cleared', async () => {
     const { token, restore } = await adminSession();
     try {
-      const { id, contentHash } = await createRecipe(token, 'V217 Race C');
+      const { id, slug, contentHash } = await createRecipe(token, 'V217 Race C');
 
-      const rev = await reviewPostReq(token, id, {
+      const rev = await reviewPostReq(token, slug, {
         action: 'review',
         evidence: REVIEW_EVIDENCE,
         expectedContentHash: contentHash,
@@ -250,7 +251,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
       expect(rev.status).toBe(200);
 
       // The clear lands against (hash, rev 1) → rev 2, evidence destroyed.
-      const clr = await reviewPostReq(token, id, {
+      const clr = await reviewPostReq(token, slug, {
         action: 'clear',
         expectedContentHash: contentHash,
         expectedRevision: 1,
@@ -261,7 +262,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
       // A second admin still holds the pre-clear prefill (same hash —
       // clear touches no content — old revision 1). Their review must
       // not resurrect the cleared state.
-      const stale = await reviewPostReq(token, id, {
+      const stale = await reviewPostReq(token, slug, {
         action: 'review',
         evidence: { ...REVIEW_EVIDENCE, reference: 'stale second opinion' },
         expectedContentHash: contentHash,
@@ -283,7 +284,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
   it('edit vs review race: a metadata-only PATCH lands (hash UNCHANGED, revision moved), then the stale review 409s on the revision alone', async () => {
     const { token, restore } = await adminSession();
     try {
-      const { id, contentHash: h1 } = await createRecipe(token, 'V217 Race D');
+      const { id, slug, contentHash: h1 } = await createRecipe(token, 'V217 Race D');
 
       // The owner's metadata-only PATCH: same content → the route
       // recomputes the IDENTICAL hash; the revision bumps 0 → 1.
@@ -299,7 +300,7 @@ describe.skipIf(!HAS_DB)('v21.7 real revision-token concurrency proof (PostgreSQ
       // The admin's review was built against the pre-edit pair
       // (h1, rev 0). The hash still matches — only the revision moved —
       // so this 409 is decided by the REVISION token alone.
-      const r = await reviewPostReq(token, id, {
+      const r = await reviewPostReq(token, slug, {
         action: 'review',
         evidence: REVIEW_EVIDENCE,
         expectedContentHash: h1,

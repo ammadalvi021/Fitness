@@ -163,6 +163,174 @@ export function screenIngredientAllergens(
   return [...hits].sort();
 }
 
+// ---------------------------------------------------------------------------
+// Allergen exclusion synonyms (v21.8 P3)
+// ---------------------------------------------------------------------------
+
+/**
+ * User-facing exclusion terms → canonical allergen-family labels (the
+ * `label` values of ALLERGEN_FAMILIES above, which are the stored
+ * spellings in `Recipe.allergens`).
+ *
+ * Rationale: the browse API accepts `excludeAllergen` from ANY client
+ * (typed input, deep links, other integrations), not just the UI's
+ * canonical-label buttons. A user who types "dairy" means the milk
+ * family; "gluten" means the wheat family; "tree nut" means the tree-nut
+ * family. Without this mapping the DB-level NOT clause would match only
+ * exact stored labels and silently return recipes the user asked to
+ * exclude.
+ *
+ * Peanuts and tree nuts stay SEPARATE families (as in the screening
+ * above — peanut is a legume, not a tree nut); "peanut/tree-nut family"
+ * in the brief means both families are handled, not merged. Dairy maps
+ * to the milk family; gluten maps to the wheat (gluten-cereal) family.
+ * Keys are normalized (lowercase, hyphens/underscores → spaces,
+ * collapsed whitespace) before lookup.
+ */
+const ALLERGEN_EXCLUSION_SYNONYMS: Record<string, string> = {
+  // eggs
+  egg: 'eggs',
+  eggs: 'eggs',
+  anda: 'eggs',
+  // fish
+  fish: 'fish',
+  tuna: 'fish',
+  salmon: 'fish',
+  machhli: 'fish',
+  machhi: 'fish',
+  rohu: 'fish',
+  surmai: 'fish',
+  // milk (dairy)
+  milk: 'milk',
+  dairy: 'milk',
+  lactose: 'milk',
+  doodh: 'milk',
+  dahi: 'milk',
+  curd: 'milk',
+  yogurt: 'milk',
+  yoghurt: 'milk',
+  paneer: 'milk',
+  cheese: 'milk',
+  butter: 'milk',
+  ghee: 'milk',
+  cream: 'milk',
+  malai: 'milk',
+  khoya: 'milk',
+  khoa: 'milk',
+  whey: 'milk',
+  lassi: 'milk',
+  'milk powder': 'milk',
+  // peanuts
+  peanut: 'peanuts',
+  peanuts: 'peanuts',
+  'moong phali': 'peanuts',
+  groundnut: 'peanuts',
+  groundnuts: 'peanuts',
+  // sesame
+  sesame: 'sesame',
+  til: 'sesame',
+  // shellfish
+  shellfish: 'shellfish',
+  shrimp: 'shellfish',
+  shrimps: 'shellfish',
+  prawn: 'shellfish',
+  prawns: 'shellfish',
+  crab: 'shellfish',
+  crabs: 'shellfish',
+  lobster: 'shellfish',
+  lobsters: 'shellfish',
+  jhinga: 'shellfish',
+  // soy
+  soy: 'soy',
+  soya: 'soy',
+  tofu: 'soy',
+  // tree nuts
+  'tree nut': 'tree nuts',
+  'tree nuts': 'tree nuts',
+  treenut: 'tree nuts',
+  treenuts: 'tree nuts',
+  almond: 'tree nuts',
+  almonds: 'tree nuts',
+  cashew: 'tree nuts',
+  cashews: 'tree nuts',
+  walnut: 'tree nuts',
+  walnuts: 'tree nuts',
+  pistachio: 'tree nuts',
+  pistachios: 'tree nuts',
+  pecan: 'tree nuts',
+  pecans: 'tree nuts',
+  hazelnut: 'tree nuts',
+  hazelnuts: 'tree nuts',
+  'brazil nut': 'tree nuts',
+  'brazil nuts': 'tree nuts',
+  kaju: 'tree nuts',
+  badam: 'tree nuts',
+  akhrot: 'tree nuts',
+  // wheat (gluten cereals)
+  wheat: 'wheat',
+  gluten: 'wheat',
+  atta: 'wheat',
+  maida: 'wheat',
+  bread: 'wheat',
+  breads: 'wheat',
+  roti: 'wheat',
+  rotis: 'wheat',
+  chapati: 'wheat',
+  chapatis: 'wheat',
+  naan: 'wheat',
+  naans: 'wheat',
+  paratha: 'wheat',
+  parathas: 'wheat',
+  kulcha: 'wheat',
+  kulchas: 'wheat',
+  bhatura: 'wheat',
+  bhaturas: 'wheat',
+  pasta: 'wheat',
+  pastas: 'wheat',
+  noodle: 'wheat',
+  noodles: 'wheat',
+  suji: 'wheat',
+  semolina: 'wheat',
+  barley: 'wheat',
+  rye: 'wheat',
+  bulgar: 'wheat',
+  couscous: 'wheat',
+  flour: 'wheat',
+};
+
+function normalizeExclusionTerm(term: string): string {
+  return term
+    .trim()
+    .toLowerCase()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Resolve raw allergen-exclusion terms to canonical allergen-family
+ * labels (deduplicated, alphabetical).
+ *
+ * Synonyms and canonical family names resolve to the stored family
+ * labels ('dairy' → 'milk', 'gluten' → 'wheat', 'peanut' → 'peanuts',
+ * 'tree nut' → 'tree nuts', …). An UNMAPPED term passes through
+ * unchanged (normalized) — the caller's DB-level NOT clause still
+ * applies to the raw stored label, so a user's exclusion request is
+ * never silently dropped; callers must never invent matches for it.
+ * Empty result = no exclusion requested.
+ */
+export function resolveAllergenExclusionTerms(
+  terms: readonly (string | null | undefined)[],
+): string[] {
+  const out = new Set<string>();
+  for (const term of terms) {
+    if (!term) continue;
+    const normalized = normalizeExclusionTerm(term);
+    if (!normalized) continue;
+    out.add(ALLERGEN_EXCLUSION_SYNONYMS[normalized] ?? normalized);
+  }
+  return [...out].sort();
+}
+
 /** The claim inputs a recheck decision is made from. */
 export interface DietAllergenInputs {
   /** Ingredient names (resolved row names at creation; stored row names at edit). */

@@ -231,8 +231,11 @@ describe('data-quality tiers', () => {
   });
 });
 
-describe('31 original recipes: verified demotion (seed.ts as text)', () => {
+describe('31 original recipes: verified demotion (seed as text)', () => {
   const seedSrc = readFileSync(resolve(process.cwd(), 'prisma/seed.ts'), 'utf8');
+  // V21.8: the recipe write payloads moved into src/seed-safety.ts
+  // (planRecipeSeed / buildSeedCreate); the guards below follow them there.
+  const safetySrc = readFileSync(resolve(process.cwd(), 'src/seed-safety.ts'), 'utf8');
 
   function recipesLoopSrc(): string {
     const start = seedSrc.indexOf('for (const r of RECIPES)');
@@ -243,12 +246,18 @@ describe('31 original recipes: verified demotion (seed.ts as text)', () => {
     return seedSrc.slice(start, end);
   }
 
-  it('the RECIPES upsert no longer claims verified: true', () => {
+  it('the RECIPES seed path never claims verified: true', () => {
     // P8 verdict: the 31 originals have hand-written nutrition with no
     // recorded verification evidence, so the flag was demoted to false.
     // (Starter FOODS elsewhere in seed.ts are out of scope for this test.)
     expect(recipesLoopSrc()).not.toMatch(/verified:\s*true/);
-    expect(recipesLoopSrc()).toMatch(/verified:\s*false/);
+    expect(safetySrc).not.toMatch(/verified:\s*true/);
+  });
+
+  it('the RECIPES create path demotes to verified: false (v21.2 P8)', () => {
+    // buildSeedCreate in src/seed-safety.ts — the demotion lives with the
+    // create payload since v21.8 instead of inline in the seed loop.
+    expect(safetySrc).toMatch(/verified:\s*false/);
   });
 
   it('no original recipe carries an unevidenced halal tag', () => {
@@ -260,10 +269,20 @@ describe('31 original recipes: verified demotion (seed.ts as text)', () => {
     expect(recBlock).not.toMatch(/'halal'/);
   });
 
-  it('the RECIPES upsert never writes review/verification evidence (v21.3 seed safety)', () => {
+  it('the seed never grants review/verification evidence (v21.3 seed safety)', () => {
     // The 31 originals stay demoted (verified:false) AND unevidenced: no
-    // seed row may gain reviewed/verified status via the seed.
+    // seed row may gain reviewed/verified status via the seed. Since v21.8
+    // the only evidence writes in the seed path are INVALIDATIONS
+    // (Prisma.JsonNull) on a material content change — evidence is cleared,
+    // never granted.
     expect(recipesLoopSrc()).not.toMatch(/reviewEvidence/);
     expect(recipesLoopSrc()).not.toMatch(/verificationEvidence/);
+    const evidenceWrites = [
+      ...safetySrc.matchAll(/(reviewEvidence|verificationEvidence):\s*([^\n,}]+)/g),
+    ];
+    expect(evidenceWrites.length).toBeGreaterThan(0);
+    for (const m of evidenceWrites) {
+      expect(m[2].trim()).toBe('Prisma.JsonNull');
+    }
   });
 });

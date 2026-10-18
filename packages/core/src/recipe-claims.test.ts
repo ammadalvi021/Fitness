@@ -234,3 +234,59 @@ describe('review/verification date window (v21.4)', () => {
     expect(reviewDateInWindow(null, TODAY)).toBe(false);
   });
 });
+
+describe('qualityTier — needsReview fail-closed (v21.8 P4)', () => {
+  it('needsReview:true + flag + COMPLETE verification evidence → calculated-estimate, never verified', () => {
+    // The legacy inconsistent record: evidence claims verified, but the
+    // recipe awaits review. It fails closed until resolved and properly
+    // reviewed.
+    expect(
+      qualityTier({
+        verified: true,
+        verificationEvidence: COMPLETE_VERIFICATION,
+        reviewEvidence: COMPLETE_REVIEW,
+        needsReview: true,
+      }),
+    ).toBe('calculated-estimate');
+  });
+
+  it('needsReview:true + complete review record → calculated-estimate, never reviewed', () => {
+    expect(
+      qualityTier({
+        verified: false,
+        reviewEvidence: COMPLETE_REVIEW,
+        needsReview: true,
+      }),
+    ).toBe('calculated-estimate');
+  });
+
+  it('needsReview:true with no evidence at all → calculated-estimate', () => {
+    expect(qualityTier({ verified: false, needsReview: true })).toBe(
+      'calculated-estimate',
+    );
+    expect(qualityTier({ verified: true, needsReview: true })).toBe(
+      'calculated-estimate',
+    );
+  });
+
+  it('needsReview:false (or absent) keeps the pre-v21.8 behavior exactly', () => {
+    expect(
+      qualityTier({
+        verified: true,
+        verificationEvidence: COMPLETE_VERIFICATION,
+        reviewEvidence: COMPLETE_REVIEW,
+        needsReview: false,
+      }),
+    ).toBe('verified');
+    // Absent flag = backward compatible (same as every pre-v21.8 caller).
+    expect(
+      qualityTier({
+        verified: true,
+        verificationEvidence: COMPLETE_VERIFICATION,
+      }),
+    ).toBe('verified');
+    expect(
+      qualityTier({ verified: false, reviewEvidence: COMPLETE_REVIEW }),
+    ).toBe('reviewed');
+  });
+});

@@ -320,6 +320,12 @@ local-only.
   served from `/uploads`. Fine for dev/single-node.
 - `s3`: S3-compatible object storage (endpoint/region/bucket + credentials).
 - Food-scan uploads are capped at `UPLOAD_MAX_MB` MB server-side.
+- Uploads are owner-scoped (v21.8): every file records its uploader + purpose;
+  retrieval requires ownership (admins may access with audit logging, fail-closed
+  when no admin allowlist is configured). Transient files (menu extracts, failed
+  scans) expire after `UPLOAD_TEMP_RETENTION_HOURS` (default 24h); purge them on
+  a schedule via admin-gated `POST /api/uploads/purge` — no in-repo scheduler
+  calls it.
 
 ### OAuth configuration
 
@@ -350,7 +356,7 @@ local-only.
 | Playwright smoke — **5/5** | `npm run test:e2e --workspace apps/web` | Real chromium against a live dev server |
 | Typecheck | `npm run typecheck` | 0 errors across all workspaces |
 | Production build | `npm run build:web` | Exit 0 (76 routes: 50 API + 26 pages) |
-| Migrations | `prisma migrate status` | Up to date (2 migrations: `init`, `add_stripe_billing_fields`) |
+| Migrations | `prisma migrate status` | Up to date (19 migrations, all additive — see `docs/RENDER_DEPLOY.md`) |
 
 Acceptance rule (from CONTRACT.md): a feature is **PASS** only when exercised
 and verified. `IMPLEMENTED` = code exists but unverified; `PARTIAL` = a required

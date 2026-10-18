@@ -100,7 +100,13 @@ vi.mock('@fitfusion/db', async (importOriginal) => {
       recipe: {
         findMany: vi.fn(async (args: Record<string, unknown>) => {
           const where = (args.where ?? {}) as Record<string, unknown>;
-          if (where.userId) return [PRIVATE_ROW]; // mine=1
+          // mine=1: the route issues { AND: [{ userId, isPrivate: true },
+          // ...allergenClause?] } (v21.8 P6). Match on that shape, not a
+          // flat userId key.
+          const and = Array.isArray(where.AND) ? (where.AND as Record<string, unknown>[]) : [];
+          if (where.userId || and.some((c) => c.userId !== undefined && c.isPrivate === true)) {
+            return [PRIVATE_ROW]; // mine=1
+          }
           if (args.select && !args.include) {
             return [{ id: EVIDENCE_ROW.id, prepMin: 10, cookMin: 30 }];
           }

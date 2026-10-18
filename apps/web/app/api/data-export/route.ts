@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@fitfusion/db';
 import { requireUser } from '@/lib/auth';
-import { saveUpload, UploadError } from '@/lib/storage';
+import { UploadError } from '@/lib/storage';
+import { saveOwnedUpload } from '@/lib/uploads';
 import { apiError, apiOk } from '@/lib/server-api';
 
 export const dynamic = 'force-dynamic';
@@ -80,9 +81,12 @@ export async function POST(req: NextRequest) {
 
   let upload;
   try {
-    upload = await saveUpload(Buffer.from(JSON.stringify(dump, null, 2), 'utf8'), {
+    // Data exports are record-associated (DataExport row): kept until the
+    // export record / account is deleted, so no expiry is set.
+    upload = await saveOwnedUpload(prisma, userId, Buffer.from(JSON.stringify(dump, null, 2), 'utf8'), {
       mime: 'application/json',
       prefix: 'exports',
+      purpose: 'data_export',
       allowedMimes: ['application/json'],
     });
   } catch (e) {

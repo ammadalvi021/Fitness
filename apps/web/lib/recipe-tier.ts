@@ -14,7 +14,11 @@
  * `tier` when present and falls back to the canonical `qualityTier()` on
  * evidence for responses that predate it. It never contains its own tier
  * logic — a bare `verified: true` with no evidence still tiers as
- * 'calculated-estimate' here, exactly as the policy requires.
+ * 'calculated-estimate' here, exactly as the policy requires. The one
+ * exception is the v21.8 (P4) needsReview guard: a recipe awaiting review
+ * is capped at 'calculated-estimate' even when the server claims a higher
+ * tier (defense in depth against stale/cached responses) — the same
+ * fail-closed rule the canonical `qualityTier()` applies.
  *
  * Badge spec: `docs/recipe-data-quality.md` §1.
  */
@@ -42,9 +46,23 @@ export interface RecipeTierInput {
   /** Full evidence (admin responses) — the canonical policy needs it. */
   verificationEvidence?: VerificationEvidence | null;
   reviewEvidence?: ReviewRecord | null;
+  /**
+   * v21.8 (P4): when true, the badge NEVER renders above
+   * 'calculated-estimate' — even if a stale/cached server response claims
+   * `tier: 'verified'`. The server is the tier authority and no longer
+   * emits that combination; this is defense in depth so the UI can never
+   * show contradictory "Verified" + "Awaiting review" labels.
+   */
+  needsReview?: boolean | null;
 }
 
 export function recipeQualityTier(r: RecipeTierInput): QualityTier {
+  // v21.8 (P4): fail closed at the presentation layer — a recipe awaiting
+  // review never renders an elevated badge, whatever the server said.
+  // This demotes; it never promotes: the canonical rule is identical to
+  // qualityTier()'s, applied here so version-skewed/cached responses
+  // cannot produce a "Verified" badge next to an "Awaiting review" one.
+  if (r.needsReview === true) return 'calculated-estimate';
   if (r.tier === 'verified' || r.tier === 'reviewed' || r.tier === 'calculated-estimate') {
     return r.tier;
   }

@@ -352,10 +352,14 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   const reviewEvidence = asReviewRecord(recipe.reviewEvidence);
   const verificationEvidence = asVerificationEvidence(recipe.verificationEvidence);
+  // v21.8 (P4): needsReview is part of the canonical tier input — the
+  // admin prefill and the public serializer (serializeRecipePublic) agree
+  // because both go through qualityTier() with the real flag.
   const tier: QualityTier = qualityTier({
     verified: recipe.verified,
     verificationEvidence,
     reviewEvidence,
+    needsReview: recipe.needsReview,
   });
   // v21.4: the admin panel must see WHY verification is blocked on an
   // incomplete recipe — the needsReview flag plus the unresolved ingredient
@@ -422,7 +426,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     return apiOk({
       recipe: {
         slug: updated.slug,
-        tier: qualityTier({ verified: false }),
+        // v21.8 (P4): canonical tier with the real needsReview flag
+        // (verified:false already caps at calculated-estimate; the flag
+        // is passed for consistency with every other call site).
+        tier: qualityTier({ verified: false, needsReview: updated.needsReview }),
         verified: false,
         reviewEvidence: null,
         verificationEvidence: null,
@@ -467,10 +474,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     return apiOk({
       recipe: {
         slug: updated.slug,
+        // v21.8 (P4): canonical tier with the real needsReview flag — a
+        // review recorded while the recipe awaits review never yields an
+        // elevated badge.
         tier: qualityTier({
           verified: updated.verified,
           verificationEvidence: verificationEvidenceAfter,
           reviewEvidence: v.record,
+          needsReview: updated.needsReview,
         }),
         verified: updated.verified,
         reviewEvidence: v.record,
@@ -570,7 +581,18 @@ export async function POST(req: NextRequest, { params }: Params) {
   return apiOk({
     recipe: {
       slug: updated.slug,
-      tier: 'verified' as QualityTier,
+      // v21.8 (P4): the tier comes from the canonical calculation, not a
+      // hardcoded string. The write above was refused when needsReview
+      // was true (checked twice: before validation and immediately
+      // before the write), so this still yields 'verified' on success —
+      // but if that invariant ever broke, the response would fail closed
+      // to 'calculated-estimate' instead of displaying a false badge.
+      tier: qualityTier({
+        verified: true,
+        verificationEvidence: ve.evidence,
+        reviewEvidence: finalReview,
+        needsReview: updated.needsReview,
+      }),
       verified: true,
       reviewEvidence: finalReview,
       verificationEvidence: ve.evidence,

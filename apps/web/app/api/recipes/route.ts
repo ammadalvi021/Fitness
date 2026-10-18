@@ -11,6 +11,7 @@ import { isAdmin } from '@/lib/admin';
 import { apiError, apiOk, clampInt, readJson, zodMessage } from '@/lib/server-api';
 import { serializeRecipePublic } from '@/lib/recipe-evidence';
 import { buildRecipeTagWhere, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate } from '@/lib/recipe-tags';
+import { buildAllergenExclusionWhere } from '@/lib/recipe-allergen-filter';
 import { recipeNutrition, resolveIngredientRows, toInstructionSteps, toDietScreenRows, ingredientAllergenScreenNames } from './custom-recipe';
 
 export const dynamic = 'force-dynamic';
@@ -30,12 +31,18 @@ export const dynamic = 'force-dynamic';
  *   and/or comma-separated; AND semantics; `halal` also matches
  *   `halal-friendly`), mealType, difficulty, minKcal/maxKcal,
  *   minProtein/maxProtein, maxTime (prep+cook), excludeAllergen
- *   (comma-separated), sort, page, pageSize (alias: limit).
+ *   (comma-separated; conservative — also excludes recipes that were never
+ *   allergen-screened, and resolves allergy synonyms/canonical family
+ *   names: 'dairy'→'milk', 'gluten'→'wheat', 'peanut'→'peanuts',
+ *   'tree nut'→'tree nuts'), sort, page, pageSize (alias: limit).
  *   Private user recipes are excluded here.
  * - `q` matches recipe titles (case-insensitive substring, legacy) AND
  *   persisted recipe aliases (normalized substring; v21.2). A recipe with
  *   no aliases behaves exactly as before.
  * - `mine=1` (authenticated): lists the caller's private custom recipes.
+ *   The `excludeAllergen` conservative screen applies here too (v21.8 P6):
+ *   unscreened private recipes are excluded from filtered results — the
+ *   exclusion request is never silently dropped for private rows.
  * - Response: { recipes, page, pageSize, limit (=pageSize, legacy),
  *   pageCount, total }.
  */
@@ -43,11 +50,22 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const mine = sp.get('mine') === '1';
 
+  // v21.8 (P6): parse the allergen exclusion BEFORE the mine=1 branch so
+  // the SAME conservative screen (apps/web/lib/recipe-allergen-filter.ts)
+  // applies to private recipes too — a private recipe must never be
+  // presented as though it satisfied an exclusion request when the public
+  // branch would have excluded it.
+  const excludeAllergen = (sp.get('excludeAllergen') ?? '')
+    .split(',').map((a) => a.trim().toLowerCase()).filter(Boolean);
+
   if (mine) {
     const s = await requireUser(req);
     if (s instanceof NextResponse) return s;
+    const and: Prisma.RecipeWhereInput[] = [{ userId: s.user.id, isPrivate: true }];
+    const allergenExclusion = buildAllergenExclusionWhere(excludeAllergen);
+    if (allergenExclusion) and.push(allergenExclusion);
     const recipes = await prisma.recipe.findMany({
-      where: { userId: s.user.id, isPrivate: true },
+      where: { AND: and },
       orderBy: { updatedAt: 'desc' },
     });
     // v21.3: shape governance fields for the owner's own list too.
@@ -67,8 +85,8 @@ export async function GET(req: NextRequest) {
   const minProtein = sp.get('minProtein') ? Number(sp.get('minProtein')) : undefined;
   const maxProtein = sp.get('maxProtein') ? Number(sp.get('maxProtein')) : undefined;
   const maxTime = sp.get('maxTime') ? Number(sp.get('maxTime')) : undefined;
-  const excludeAllergen = (sp.get('excludeAllergen') ?? '')
-    .split(',').map((a) => a.trim().toLowerCase()).filter(Boolean);
+  // v21.8 (P6): excludeAllergen is parsed before the mine=1 branch so both
+  // branches share the same conservative screen.
   const tagParams = sp.getAll('tag')
     .flatMap((v) => v.split(','))
     .map((t) => t.trim())
@@ -100,8 +118,19 @@ export async function GET(req: NextRequest) {
   // semantics) — `halal` also matches `halal-friendly`.
   const tagWhere = buildRecipeTagWhere(tagParams);
   if (tagWhere) and.push(tagWhere);
-  // V21.2 (P5): allergen exclusion is DB-side (NOT hasSome).
-  if (excludeAllergen.length) and.push({ NOT: { allergens: { hasSome: excludeAllergen } } });
+  // v21.8 (P3): CONSERVATIVE allergen exclusion, built by
+  // buildAllergenExclusionWhere (apps/web/lib/recipe-allergen-filter.ts).
+  // The clause excludes recipes whose stored allergen list contains any
+  // resolved exclusion term AND excludes recipes that were never
+  // allergen-screened (allergenScreened=false) — an unscreened recipe can
+  // never be presented as though it satisfied the exclusion request
+  // (fail closed: unknown is never treated as safe). Exclusion terms
+  // resolve synonyms/canonical family names ('dairy'→'milk',
+  // 'gluten'→'wheat', 'peanut'→'peanuts', 'tree nut'→'tree nuts', …).
+  // Screening stays name-based only — never an allergy-safety guarantee
+  // (ALLERGEN_CAVEAT is shown on the recipe detail page).
+  const allergenExclusion = buildAllergenExclusionWhere(excludeAllergen);
+  if (allergenExclusion) and.push(allergenExclusion);
   if (mealType) and.push({ mealType: { equals: mealType, mode: 'insensitive' } });
   if (difficulty) and.push({ difficulty: { equals: difficulty, mode: 'insensitive' } });
   if (minKcal !== undefined && Number.isFinite(minKcal)) and.push({ kcalPerServing: { gte: minKcal } });

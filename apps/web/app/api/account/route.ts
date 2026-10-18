@@ -32,16 +32,25 @@ export async function DELETE(req: NextRequest) {
 
   const userId = s.user.id;
 
-  // Best-effort cleanup of the user's uploaded files (scans, exports).
-  const [scans, exports] = await Promise.all([
+  // Best-effort cleanup of the user's uploaded files. v21.8: the Upload
+  // ownership registry covers everything (including transient menu extracts
+  // that have no FoodScan/DataExport row); the legacy URL-derived keys
+  // cover pre-v21.8 files whose registry row was never written.
+  const [registered, scans, exports] = await Promise.all([
+    prisma.upload.findMany({ where: { userId }, select: { key: true } }),
     prisma.foodScan.findMany({ where: { userId }, select: { imageUrl: true } }),
     prisma.dataExport.findMany({ where: { userId }, select: { fileUrl: true } }),
   ]);
-  const keys = [...scans, ...exports]
-    .map((r) => ('imageUrl' in r ? r.imageUrl : (r as { fileUrl: string | null }).fileUrl))
-    .filter((u): u is string => Boolean(u))
-    .map((u) => u.replace(/^\/api\/uploads\//, ''));
-  await Promise.all(keys.map((k) => deleteUpload(k)));
+  const keys = new Set([
+    ...registered.map((r) => r.key),
+    ...[...scans, ...exports]
+      .map((r) => ('imageUrl' in r ? r.imageUrl : (r as { fileUrl: string | null }).fileUrl))
+      .filter((u): u is string => Boolean(u))
+      .map((u) => u.replace(/^\/api\/uploads\//, '')),
+  ]);
+  // deleteUpload throws on GENUINE storage failures (v21.8 P3), so each
+  // delete stays best-effort here: one bad file must not abort account deletion.
+  await Promise.all([...keys].map((k) => deleteUpload(k).catch(() => {})));
 
   await prisma.$transaction([
     prisma.verificationToken.deleteMany({ where: { userId } }),

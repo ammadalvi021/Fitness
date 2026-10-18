@@ -101,7 +101,11 @@ export function countOriginalRecipesFromSeedText(): { total: number; verifiedTru
   if (upsertStart < 0 || upsertEnd < 0) throw new Error('seed.ts RECIPES upsert block not found');
   const upsertBlock = text.slice(upsertStart, upsertEnd);
   const verifiedTrue = (upsertBlock.match(/verified:\s*true/g) ?? []).length;
-  const needsReviewSet = /needsReview\s*:/.test(upsertBlock);
+  // V21.8: the originals' seed payload normalizes through
+  // src/seed-safety.ts and may spell out `needsReview: false` explicitly —
+  // that is identical to the schema default the report assumes. What must
+  // never happen is seeding an original as needsReview: true.
+  const needsReviewSet = /needsReview\s*:\s*true/.test(upsertBlock);
   return { total: slugs.length, verifiedTrue, needsReviewSet };
 }
 
@@ -124,9 +128,9 @@ export function buildQualityReport(): QualityReport {
   const batchRecipes = batches.reduce((n, b) => n + b.recipes, 0);
   const { total: originalRecipes, verifiedTrue, needsReviewSet } = countOriginalRecipesFromSeedText();
 
-  // The 31 originals are seeded WITHOUT a needsReview assignment, so the
-  // schema default (false) applies; they are seeded with verified: false
-  // (v21.2 P8 demotion). Any deviation is a loud failure, not a silent one.
+  // The 31 originals are seeded with needsReview false (explicitly or via
+  // the schema default) and verified: false (v21.2 P8 demotion). Any
+  // deviation is a loud failure, not a silent one.
   if (verifiedTrue !== 0) throw new Error(`seed.ts sets verified: true on ${verifiedTrue} original recipes`);
   if (needsReviewSet) throw new Error('seed.ts sets needsReview on original recipes — report assumptions broken');
 

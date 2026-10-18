@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 import {
   screenIngredientAllergens,
   dietAllergenRecheckNeeded,
+  resolveAllergenExclusionTerms,
 } from './recipe-allergen-screening.js';
 
 describe('screenIngredientAllergens (v21.4 ITEM 6)', () => {
@@ -145,5 +146,59 @@ describe('dietAllergenRecheckNeeded (v21.4 ITEM 6)', () => {
         dietCategory: 'vegetarian',
       }),
     ).toBe(true);
+  });
+});
+
+describe('resolveAllergenExclusionTerms (v21.8 P3)', () => {
+  it('resolves common allergy synonyms to canonical family labels', () => {
+    expect(resolveAllergenExclusionTerms(['dairy'])).toEqual(['milk']);
+    expect(resolveAllergenExclusionTerms(['milk'])).toEqual(['milk']);
+    expect(resolveAllergenExclusionTerms(['gluten'])).toEqual(['wheat']);
+    expect(resolveAllergenExclusionTerms(['wheat'])).toEqual(['wheat']);
+    expect(resolveAllergenExclusionTerms(['peanut'])).toEqual(['peanuts']);
+    expect(resolveAllergenExclusionTerms(['peanuts'])).toEqual(['peanuts']);
+    expect(resolveAllergenExclusionTerms(['egg'])).toEqual(['eggs']);
+    expect(resolveAllergenExclusionTerms(['soya'])).toEqual(['soy']);
+    expect(resolveAllergenExclusionTerms(['prawns'])).toEqual(['shellfish']);
+  });
+
+  it('resolves tree-nut family spellings to the canonical "tree nuts" label', () => {
+    for (const term of ['tree nut', 'tree nuts', 'tree-nut', 'tree-nuts', 'treenut', 'Tree Nut']) {
+      expect(resolveAllergenExclusionTerms([term])).toEqual(['tree nuts']);
+    }
+    expect(resolveAllergenExclusionTerms(['almond'])).toEqual(['tree nuts']);
+    expect(resolveAllergenExclusionTerms(['cashews'])).toEqual(['tree nuts']);
+  });
+
+  it('keeps peanut and tree nuts as SEPARATE families (never merged)', () => {
+    expect(resolveAllergenExclusionTerms(['peanut'])).toEqual(['peanuts']);
+    expect(resolveAllergenExclusionTerms(['peanut'])).not.toContain('tree nuts');
+    expect(resolveAllergenExclusionTerms(['tree nut'])).toEqual(['tree nuts']);
+    expect(resolveAllergenExclusionTerms(['tree nut'])).not.toContain('peanuts');
+  });
+
+  it('normalizes case, whitespace, and hyphens/underscores', () => {
+    expect(resolveAllergenExclusionTerms(['  DAIRY '])).toEqual(['milk']);
+    expect(resolveAllergenExclusionTerms(['tree_nut'])).toEqual(['tree nuts']);
+    expect(resolveAllergenExclusionTerms(['  Tree   Nut '])).toEqual(['tree nuts']);
+  });
+
+  it('dedupes and sorts the resolved labels', () => {
+    expect(resolveAllergenExclusionTerms(['dairy', 'milk', 'DAIRY', 'gluten', 'wheat'])).toEqual([
+      'milk',
+      'wheat',
+    ]);
+  });
+
+  it('passes unmapped terms through unchanged (never silently dropped)', () => {
+    // A stored label the synonym table does not know still reaches the
+    // DB-level NOT clause verbatim — callers never invent matches for it.
+    expect(resolveAllergenExclusionTerms(['corn'])).toEqual(['corn']);
+    expect(resolveAllergenExclusionTerms(['milk', 'corn'])).toEqual(['corn', 'milk']);
+  });
+
+  it('returns [] for empty/blank input (no exclusion requested)', () => {
+    expect(resolveAllergenExclusionTerms([])).toEqual([]);
+    expect(resolveAllergenExclusionTerms(['', '   ', null, undefined])).toEqual([]);
   });
 });

@@ -783,3 +783,23 @@ runs before the new column exists in production.
 **Status distinctions.** Implemented: P1–P3 source. Pure/mock-tested: all above (real counts). DB-tested: none (blocked). Browser-tested: none (blocked). Real-service-verified: none (Google Fit + USDA-live still need owner keys + smoke tests, unchanged).
 
 **Owner-side steps after deploy.** (1) `prisma migrate deploy` applies `20261015195900_v217_recipe_revision` (+ earlier pending). (2) Backfill: `DATABASE_URL=… npm run db:backfill-hashes -- --dry-run`, then `-- --batch-size 200` (repeat until exit 0). (3) Re-run DB suites with `DATABASE_URL` set to un-skip the real concurrency proofs.
+
+## 19. v21.8 data integrity, restaurant & nutrition fixes (2026-10-16, coordinator, 5 workers + coordinator verification)
+
+**Scope.** P1: seed safety for existing records. P2: restaurant-menu submission/publication split. P3: conservative allergen filtering. P4: incomplete-nutrition tier policy. P5: stale menu-verification invalidation. P6: honest menu estimator. P7: upload ownership + retention. P8: docs + full verification. Forward-only additive migrations; no data fabricated; no production DB access; backfill live-run + real-PostgreSQL proofs still pending owner-side.
+
+**P1 — seed safety.** `packages/db/src/seed-safety.ts` (new): `planRecipeSeed` classifies create / skip (private user recipes never touched) / unchanged / metadata-only / material using the canonical `computeRecipeContentHash(buildContentSnapshot(…))`. Unchanged → zero writes. Material → one conditional `updateMany({ where: { id, revision: readRevision } })` with recomputed hash, revision bump, evidence invalidation, allergens as union(declared, screenIngredientAllergens(names)) — union, because 101/270 seed recipes' declared lists differ from the screener in both directions and replacing curated lists would introduce false negatives. Exercises never touch mediaType/mediaUrl unless the seed entry carries media. Report: created/updated/unchanged/skipped/failed; exit 1 on failures. 26/26 unit tests + real-data idempotency over all 239 batch recipes; 7 integration tests skip-guarded (DB pending).
+
+**P2 — menu submission workflow.** New `MenuSubmission` model (migration `20261016133000_v218_menu_submissions`, additive). `POST /api/menus/confirm` validates fully, inserts `pending` rows in one transaction (failed batch → zero partials), never publishes. Admin queue + approve/reject routes; approve publishes in the same transaction as the review stamp. Public GET unchanged (invisible until approved).
+
+**P3 — allergen filtering.** `excludeAllergen` now requires `allergenScreened: true` (fail closed — unscreened never presented as safe) with synonym/canonical-family term resolution (`resolveAllergenExclusionTerms`); new pure `apps/web/lib/recipe-allergen-filter.ts`. UI disclaimer + detail-page caveat retained.
+
+**P4 — tier policy.** `needsReview: true` caps the tier at `calculated-estimate` everywhere: canonical `qualityTier()` (core), required `needsReview` on evidence inputs, public + admin serializers agree by construction, presentation-layer demote-only guard. Verify-success no longer hardcodes `tier:'verified'`.
+
+**P5 — menu verification invalidation.** `menuPatchHasMaterialChange()` detects material edits; `lastVerifiedAt` cleared unless `verify:true` re-stamps in the same request; `verify:true` rejected (400) when merged nutritionStatus is `unavailable` (anti-laundering).
+
+**P6 — honest estimator.** `EstimateProblem` rows + `complete` flag; incomplete → explicit banner with per-row reasons, no "Use this estimate" button. Complete path unchanged.
+
+**P7 — upload ownership.** New `Upload` registry (migration `20261016133000_v218_upload_ownership`, additive). Owner-scoped retrieval (404 for strangers — no existence oracle), admin access audit-logged and fail-closed, transient-file retention sweep via admin-gated `POST /api/uploads/purge` (**deployment must schedule this — no in-repo scheduler**). Legacy files self-heal the registry on owner read.
+
+**Verification (coordinator, 2026-10-16):** typecheck 0 errors (23 prisma files); core 386/386; db 408 passed/11 skipped; web v21.8 suites 125/125; prisma validate valid; build exit 0. **DB-tested blocked** (no PostgreSQL here): seed-safety 7, menu-submissions 25, revision-guard-db 4, backfill live run — written skip-guarded, owner-side. **Browser-tested blocked** (no runner).

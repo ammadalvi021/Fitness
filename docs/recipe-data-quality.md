@@ -48,6 +48,12 @@ calculated estimates flagged as awaiting review.
   with an additional **"Awaiting review"** marker when `needsReview` is true.
 - Unresolved/unverified states must stay visible — never hidden behind a
   cleaner-looking badge.
+- **v21.8 (P4):** `needsReview: true` caps the canonical tier at
+  `calculated-estimate` — a recipe awaiting review never carries a
+  **"Verified"** (or "Reviewed") badge, even when stored evidence looks
+  complete. Legacy inconsistent records (verified evidence + `needsReview`
+  true) fail closed until resolved and properly reviewed, so the tier badge
+  can never contradict the "Awaiting review" marker.
 
 Worker F did not implement these badges: the `[slug]` route and the recipes
 list page were explicitly out of scope for this worker. The data side is

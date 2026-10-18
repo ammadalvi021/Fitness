@@ -690,7 +690,7 @@ describe('v21.7 revision token semantics', () => {
 
   it('serializeRecipePublic keeps revision on the wire (recipe detail GET contract)', async () => {
     const shaped = serializeRecipePublic(
-      { revision: 3, contentHash: 'hash-xyz', verified: false, verificationEvidence: null, reviewEvidence: null },
+      { revision: 3, contentHash: 'hash-xyz', verified: false, verificationEvidence: null, reviewEvidence: null, needsReview: false },
       false,
     ) as unknown as { revision: unknown };
     expect(shaped.revision).toBe(3);
