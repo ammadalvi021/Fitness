@@ -132,6 +132,10 @@ export interface NormalizedPlanDay {
   title: string;
   isRest: boolean;
   exercises: SnapshotExercise[];
+  /** Phase D: guided days (plan day type 'yoga' | 'aerobics'); null otherwise. */
+  guidedKind?: "yoga" | "aerobics" | null;
+  sourceSlug?: string | null;
+  durationSeconds?: number | null;
 }
 
 function normalizePlanExercise(raw: unknown, index: number): SnapshotExercise {
@@ -161,12 +165,17 @@ export function normalizePlanDays(days: unknown): NormalizedPlanDay[] {
     const exercisesRaw = Array.isArray(o.exercises) ? o.exercises : [];
     const isRest =
       o.rest === true || o.isRest === true || o.type === "rest" || o.kind === "rest";
+    const guidedKind =
+      o.type === "yoga" || o.type === "aerobics" ? (o.type as "yoga" | "aerobics") : null;
     return {
       dayIndex: idx,
       label: DAY_NAMES[idx] ?? `Day ${idx + 1}`,
       title: toString(o.title) ?? toString(o.focus) ?? toString(o.name) ?? (isRest ? "Rest day" : "Workout"),
       isRest,
       exercises: isRest ? [] : exercisesRaw.map((e, j) => normalizePlanExercise(e, j)),
+      guidedKind,
+      sourceSlug: guidedKind ? toString(o.sourceSlug) : null,
+      durationSeconds: guidedKind ? toNumber(o.durationSeconds) : null,
     };
   });
 }

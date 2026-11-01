@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@fitfusion/db';
 import type { Exercise } from '@fitfusion/db';
+import { routineDurationSeconds, sequenceDurationSeconds } from '@fitfusion/core';
 import { requirePlan } from '@/lib/auth';
 import { apiError, apiOk, parseDateOnly, readJson, startOfWeekMonday, toDateOnly, zodMessage } from '@/lib/server-api';
 
@@ -96,6 +97,79 @@ export async function POST(req: NextRequest) {
   const minutesPerDay = profile?.workoutMinutesPerDay ?? 45;
   const exercisesPerSession = Math.min(8, Math.max(4, Math.round(minutesPerDay / 8)));
 
+  // --- Phase D: guided (yoga / aerobics) mixing ---------------------------
+  // workoutTypes [] (or strength-only) => guidedKinds is empty and NONE of
+  // the guided code below runs: the strength path is exactly the original
+  // behaviour, with no extra queries and no reordered logic.
+  type GuidedKind = 'yoga' | 'aerobics';
+  interface GuidedEntry {
+    kind: GuidedKind;
+    slug: string;
+    title: string;
+    level: string;
+    totalDurationSeconds: number;
+  }
+  const workoutTypes = profile?.workoutTypes ?? [];
+  const guidedKinds: GuidedKind[] = (['yoga', 'aerobics'] as GuidedKind[]).filter((k) =>
+    workoutTypes.includes(k),
+  );
+  const guidedEntriesByKind = new Map<GuidedKind, GuidedEntry[]>();
+  if (guidedKinds.length > 0) {
+    const targetSeconds = minutesPerDay * 60;
+    // Deterministic candidate order: closest duration to the user's
+    // minutes-per-day first, slug ascending as the tie-break.
+    const byCloseness = (a: GuidedEntry, b: GuidedEntry) =>
+      Math.abs(a.totalDurationSeconds - targetSeconds) -
+        Math.abs(b.totalDurationSeconds - targetSeconds) ||
+      a.slug.localeCompare(b.slug);
+    // Level-appropriate: entry.level uses the same vocabulary as
+    // fitnessExperience in the seeded catalogs (beginner/intermediate/
+    // advanced — see seed-guided-data.ts), so allowedDifficulties applies
+    // directly. Fall back to all entries of the kind if the filter empties.
+    const levelFilter = (entries: GuidedEntry[]): GuidedEntry[] => {
+      const lvl = entries.filter((e) => allowedDifficulties.includes(e.level.toLowerCase()));
+      return lvl.length > 0 ? lvl : entries;
+    };
+    if (guidedKinds.includes('yoga')) {
+      const sequences = await prisma.yogaSequence.findMany({
+        include: { poses: true },
+        orderBy: { slug: 'asc' },
+      });
+      const entries = levelFilter(
+        sequences.map((seq) => ({
+          kind: 'yoga' as GuidedKind,
+          slug: seq.slug,
+          title: seq.title,
+          level: seq.level,
+          totalDurationSeconds: sequenceDurationSeconds(seq.poses),
+        })),
+      ).sort(byCloseness);
+      if (entries.length > 0) guidedEntriesByKind.set('yoga', entries);
+    }
+    if (guidedKinds.includes('aerobics')) {
+      const routines = await prisma.aerobicRoutine.findMany({
+        include: { steps: true },
+        orderBy: { slug: 'asc' },
+      });
+      const entries = levelFilter(
+        routines.map((r) => ({
+          kind: 'aerobics' as GuidedKind,
+          slug: r.slug,
+          title: r.title,
+          level: r.level,
+          totalDurationSeconds: routineDurationSeconds(r.steps),
+        })),
+      ).sort(byCloseness);
+      if (entries.length > 0) guidedEntriesByKind.set('aerobics', entries);
+    }
+  }
+  // Kinds that actually have catalog entries to assign.
+  const effectiveGuidedKinds = guidedKinds.filter((k) => guidedEntriesByKind.has(k));
+  // Strength days are generated when strength was selected, or when there
+  // is nothing guided to assign (including the empty-workoutTypes case).
+  const strengthWillGenerate =
+    workoutTypes.includes('strength') || effectiveGuidedKinds.length === 0;
+
   const library = await prisma.exercise.findMany({ orderBy: { slug: 'asc' } });
   const eligible = library.filter((e) => {
     if (!allowedDifficulties.includes(e.difficulty)) return false;
@@ -107,7 +181,9 @@ export async function POST(req: NextRequest) {
     return true;
   });
 
-  if (eligible.length === 0) {
+  // A guided-only profile must not be blocked by an empty strength library:
+  // the 400 applies only when strength days will actually be generated.
+  if (eligible.length === 0 && strengthWillGenerate) {
     return apiError(
       'no_exercises',
       'No exercises match your equipment and experience settings',
@@ -138,6 +214,15 @@ export async function POST(req: NextRequest) {
   const cursor = new Map<Focus, number>();
   const days: object[] = [];
   let sessionCount = 0;
+  // Phase D counters — all stay at zero / unused when there are no guided
+  // kinds, so the strength path below is unchanged in that case.
+  // strengthSessionCount drives the focus rotation + exercise cursor, so
+  // guided insertions never shift strength picks.
+  let strengthSessionCount = 0;
+  let guidedSessionCount = 0;
+  let guidedDayCount = 0;
+  const guidedKindsUsed: GuidedKind[] = [];
+  const guidedEntryCursor = new Map<GuidedKind, number>();
   for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
     const date = new Date(weekStart.getTime() + dayIndex * 24 * 3600 * 1000);
     const dow = date.getUTCDay();
@@ -150,7 +235,39 @@ export async function POST(req: NextRequest) {
       });
       continue;
     }
-    const focus = focusRotation[sessionCount % focusRotation.length];
+    // Session index i = sessionCount (0-based among workout days only).
+    // Mixed (strength also selected): guided on ODD i — every second
+    // session. Guided-only: EVERY workout day is guided.
+    const isGuided =
+      effectiveGuidedKinds.length > 0 &&
+      (!strengthWillGenerate || sessionCount % 2 === 1);
+    if (isGuided) {
+      // Cycle kinds in fixed order (yoga, then aerobics); entries
+      // round-robin per kind through the duration-ordered candidates.
+      const kind = effectiveGuidedKinds[guidedSessionCount % effectiveGuidedKinds.length];
+      const entries = guidedEntriesByKind.get(kind)!;
+      const entryIdx = guidedEntryCursor.get(kind) ?? 0;
+      const entry = entries[entryIdx % entries.length];
+      guidedEntryCursor.set(kind, entryIdx + 1);
+      guidedSessionCount += 1;
+      guidedDayCount += 1;
+      if (!guidedKindsUsed.includes(kind)) guidedKindsUsed.push(kind);
+      sessionCount += 1;
+      days.push({
+        dayIndex,
+        date: toDateOnly(date),
+        type: kind,
+        title: entry.title,
+        sourceSlug: entry.slug,
+        durationSeconds: entry.totalDurationSeconds,
+        note:
+          kind === 'yoga'
+            ? 'Guided yoga session — follow the pose-by-pose player.'
+            : 'Guided aerobics session — follow the step-by-step player.',
+      });
+      continue;
+    }
+    const focus = focusRotation[strengthSessionCount % focusRotation.length];
     const pool = byFocus.get(focus) ?? eligible;
     const start = cursor.get(focus) ?? 0;
     const picked: PlannedExercise[] = [];
@@ -168,6 +285,7 @@ export async function POST(req: NextRequest) {
     }
     cursor.set(focus, (start + exercisesPerSession) % pool.length);
     sessionCount += 1;
+    strengthSessionCount += 1;
     days.push({
       dayIndex,
       date: toDateOnly(date),
@@ -195,6 +313,12 @@ export async function POST(req: NextRequest) {
         WORKOUT_SAFETY_NOTE,
         `Schedule: ${sessionCount} workout day(s), ${7 - sessionCount} rest day(s).`,
         'Progress gradually — increase load or reps only when the current scheme feels manageable.',
+        // Additive only: strength-only plans keep exactly the 3 notes above.
+        ...(guidedDayCount > 0
+          ? [
+              `Includes ${guidedDayCount} guided day(s) (${guidedKindsUsed.join(', ')}) from your workout-type preferences.`,
+            ]
+          : []),
       ],
     },
     201,

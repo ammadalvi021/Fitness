@@ -70,6 +70,15 @@ export const ProfileUpdateSchema = z.object({
   equipment: z.array(z.string().min(1).max(50)).max(30).optional(),
   workoutDays: z.array(z.string().min(1).max(10)).max(7).optional(),
   workoutMinutesPerDay: z.number().int().min(5).max(300).optional(),
+  // Phase D: preferred workout types. Empty/absent = strength-only
+  // (legacy default). Deduped with first-occurrence order preserved;
+  // max(3) is checked BEFORE dedupe, so a 4-item list is rejected even
+  // if it contains a duplicate.
+  workoutTypes: z
+    .array(z.enum(['strength', 'yoga', 'aerobics']))
+    .max(3)
+    .transform((arr) => [...new Set(arr)])
+    .optional(),
   dietPreference: z.string().min(1).max(50).optional(),
   allergies: z.array(z.string().min(1)).max(50).optional(),
   intolerances: z.array(z.string().min(1)).max(50).optional(),

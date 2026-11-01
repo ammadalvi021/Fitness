@@ -58,6 +58,11 @@ import {
 import { PAKISTANI_RECIPES } from './seed-recipes-pakistani.js';
 import { INDIAN_MET_RECIPES } from './seed-recipes-indian-met.js';
 import { ASIAN_RECIPES } from './seed-recipes-asian.js';
+import {
+  AEROBIC_ROUTINES,
+  YOGA_POSES,
+  YOGA_SEQUENCES,
+} from './seed-guided-data.js';
 import { WESTERN_RECIPES } from './seed-recipes-western.js';
 // V21.2: alias persistence helpers (pure — no DB I/O at import time).
 import { buildRecipeAliasRows } from '../src/alias-normalize.js';
@@ -2460,6 +2465,94 @@ async function main() {
     }
   }
 
+  // --- V22 Phase A: Yoga & Aerobics guided catalog -------------------------
+  // New tables only — no existing seeding behaviour changes. Idempotent
+  // upserts by slug; join rows (sequence poses, routine steps) are replaced
+  // deterministically per parent on every run. Media fields are never
+  // written here: rows keep the schema defaults (mediaType "none",
+  // mediaStatus "placeholder") until a real verified asset exists.
+  const poseIds = new Map<string, string>();
+  for (const p of YOGA_POSES) {
+    const data = {
+      name: p.name,
+      sanskritName: p.sanskritName,
+      description: p.description,
+      instructions: p.instructions,
+      breathing: p.breathing,
+      modifications: p.modifications,
+      cautions: p.cautions ?? null,
+      difficulty: p.difficulty,
+      defaultHoldSeconds: p.defaultHoldSeconds,
+      bilateral: p.bilateral,
+      focusAreas: p.focusAreas,
+    };
+    const row = await prisma.yogaPose.upsert({
+      where: { slug: p.slug },
+      create: { slug: p.slug, ...data },
+      update: data,
+    });
+    poseIds.set(p.slug, row.id);
+  }
+  for (const s of YOGA_SEQUENCES) {
+    const data = {
+      title: s.title,
+      category: s.category,
+      level: s.level,
+      description: s.description,
+      safetyNotes: s.safetyNotes,
+      metValue: s.metValue,
+    };
+    const seq = await prisma.yogaSequence.upsert({
+      where: { slug: s.slug },
+      create: { slug: s.slug, ...data },
+      update: data,
+    });
+    await prisma.yogaSequencePose.deleteMany({ where: { sequenceId: seq.id } });
+    await prisma.yogaSequencePose.createMany({
+      data: s.poses.map((sp, i) => {
+        const poseId = poseIds.get(sp.poseSlug);
+        if (!poseId) throw new Error(`Unknown yoga pose in sequence ${s.slug}: ${sp.poseSlug}`);
+        return {
+          sequenceId: seq.id,
+          poseId,
+          order: i + 1,
+          holdSeconds: sp.holdSeconds,
+          side: sp.side ?? 'both',
+          transitionSeconds: sp.transitionSeconds ?? 5,
+          cue: sp.cue ?? null,
+        };
+      }),
+    });
+  }
+  for (const r of AEROBIC_ROUTINES) {
+    const data = {
+      title: r.title,
+      category: r.category,
+      level: r.level,
+      intensity: r.intensity,
+      metValue: r.metValue,
+      description: r.description,
+      safetyNotes: r.safetyNotes,
+    };
+    const routine = await prisma.aerobicRoutine.upsert({
+      where: { slug: r.slug },
+      create: { slug: r.slug, ...data },
+      update: data,
+    });
+    await prisma.routineStep.deleteMany({ where: { routineId: routine.id } });
+    await prisma.routineStep.createMany({
+      data: r.steps.map((st, i) => ({
+        routineId: routine.id,
+        order: i + 1,
+        phase: st.phase,
+        name: st.name,
+        durationSeconds: st.durationSeconds,
+        cue: st.cue ?? null,
+        lowImpactAlternative: st.lowImpactAlternative ?? null,
+      })),
+    });
+  }
+
   const [cuisines, recipes, exercises, foods, categories, aliases, portions] = await Promise.all([
     prisma.cuisine.count(),
     prisma.recipe.count(),
@@ -2476,6 +2569,19 @@ async function main() {
   );
   // V21.8: per-record-type report (created / updated / unchanged / skipped / failed).
   console.log(stats.summary());
+  // V22 Phase A: guided catalog counts (own line; the line above is unchanged).
+  const [yogaPoses, yogaSequences, sequencePoses, aerobicRoutines, routineSteps] =
+    await Promise.all([
+      prisma.yogaPose.count(),
+      prisma.yogaSequence.count(),
+      prisma.yogaSequencePose.count(),
+      prisma.aerobicRoutine.count(),
+      prisma.routineStep.count(),
+    ]);
+  console.log(
+    `Guided catalog: yogaPoses=${yogaPoses} yogaSequences=${yogaSequences} sequencePoses=${sequencePoses} ` +
+      `aerobicRoutines=${aerobicRoutines} routineSteps=${routineSteps}`,
+  );
   if (stats.failedTotal() > 0) {
     // Fail loudly (same contract as before: a failed seed exits non-zero),
     // but only after every other record was attempted and reported.

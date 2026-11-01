@@ -28,19 +28,26 @@ import { assetMimeType } from '@/components/ExerciseMedia';
 
 const SLUGS = Object.keys(ANIMATIONS);
 
-describe('EXERCISE_MEDIA registry — owner-supplied GIF contract', () => {
+describe('EXERCISE_MEDIA registry — owner-supplied asset contract', () => {
   it('covers exactly the 50 exercise slugs (no more, no fewer)', () => {
     expect(SLUGS).toHaveLength(50);
     expect(Object.keys(EXERCISE_MEDIA).sort()).toEqual([...SLUGS].sort());
   });
 
-  it('every entry is a verified owner-supplied GIF — no invented asset URLs', () => {
+  it('every entry is a verified owner-supplied asset — no invented asset URLs', () => {
     for (const slug of SLUGS) {
       const entry = EXERCISE_MEDIA[slug];
       expect(entry, slug).toBeDefined();
       expect(entry.displayName, `${slug}.displayName`).toMatch(/\S/);
-      expect(entry.mediaType, `${slug}.mediaType`).toBe('gif');
-      expect(entry.assetUrl, `${slug}.assetUrl`).toBe(`/exercise-gifs/${slug}.gif`);
+      // Two owner-supplied asset kinds: the 2026-10-11 GIFs and, from
+      // 2026-10-31, anatomy-style MP4 videos replacing them in batches.
+      expect(['gif', 'mp4'], `${slug}.mediaType`).toContain(entry.mediaType);
+      if (entry.mediaType === 'gif') {
+        expect(entry.assetUrl, `${slug}.assetUrl`).toBe(`/exercise-gifs/${slug}.gif`);
+      } else {
+        expect(entry.assetUrl, `${slug}.assetUrl`).toBe(`/exercise-videos/${slug}.mp4`);
+        expect(entry.posterUrl, `${slug}.posterUrl`).toBe(`/exercise-videos/${slug}.jpg`);
+      }
       expect(entry.attribution, `${slug}.attribution`).toMatch(/\S/);
       expect(entry.license, `${slug}.license`).toMatch(/\S/);
       expect(entry.verificationStatus, `${slug}.verificationStatus`).toBe('verified');
@@ -84,7 +91,8 @@ describe('EXERCISE_MEDIA registry — owner-supplied GIF contract', () => {
     const entry = getExerciseMedia('push-up');
     expect(entry?.displayName).toBe('Push-Up');
     expect(entry?.verificationStatus).toBe('verified');
-    expect(entry?.assetUrl).toBe('/exercise-gifs/push-up.gif');
+    // push-up was replaced by an owner-supplied MP4 in the 2026-10-31 batch.
+    expect(entry?.assetUrl).toBe('/exercise-videos/push-up.mp4');
   });
 
   it('getExerciseMedia returns null for an unknown slug', () => {
@@ -280,8 +288,8 @@ describe('assetMimeType — correct MIME per container', () => {
   });
 });
 
-describe('owner-supplied GIF files on disk', () => {
-  it('all 50 registry assetUrls resolve to real animated GIF files', async () => {
+describe('owner-supplied asset files on disk', () => {
+  it('all 50 registry assetUrls resolve to real files of the declared type', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const publicDir = path.resolve(__dirname, '../../public');
@@ -290,8 +298,17 @@ describe('owner-supplied GIF files on disk', () => {
       const entry = EXERCISE_MEDIA[slug];
       const filePath = path.join(publicDir, entry.assetUrl as string);
       expect(fs.existsSync(filePath), `${slug}: file exists at ${entry.assetUrl}`).toBe(true);
-      const magic = fs.readFileSync(filePath).subarray(0, 6).toString('ascii');
-      expect(['GIF87a', 'GIF89a'], `${slug}: valid GIF magic bytes`).toContain(magic);
+      const head = fs.readFileSync(filePath);
+      if (entry.mediaType === 'gif') {
+        const magic = head.subarray(0, 6).toString('ascii');
+        expect(['GIF87a', 'GIF89a'], `${slug}: valid GIF magic bytes`).toContain(magic);
+      } else {
+        // MP4: an 'ftyp' box must appear at offset 4.
+        expect(head.subarray(4, 8).toString('ascii'), `${slug}: valid MP4 ftyp box`).toBe('ftyp');
+        const posterPath = path.join(publicDir, entry.posterUrl as string);
+        expect(fs.existsSync(posterPath), `${slug}: poster exists at ${entry.posterUrl}`).toBe(true);
+        expect(head.length, `${slug}: non-trivial video size`).toBeGreaterThan(50_000);
+      }
       checked++;
     }
     expect(checked).toBe(50);

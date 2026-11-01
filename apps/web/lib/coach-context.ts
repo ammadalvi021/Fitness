@@ -24,6 +24,7 @@ export async function buildCoachContext(
   if (profile) {
     const bits: string[] = [];
     if (profile.goal) bits.push(`goal: ${profile.goal}`);
+    if (profile.workoutTypes?.length) bits.push(`workout types: ${profile.workoutTypes.join(', ')}`);
     if (profile.dietPreference) bits.push(`diet: ${profile.dietPreference}`);
     if (profile.allergies.length) bits.push(`allergies: ${profile.allergies.join(', ')}`);
     if (profile.activityLevel) bits.push(`activity: ${profile.activityLevel}`);
@@ -49,10 +50,32 @@ export async function buildCoachContext(
     );
   }
 
-  const workoutCount = await prisma.workoutSession.count({
+  const recentSessions = await prisma.workoutSession.findMany({
     where: { userId, startedAt: { gte: since } },
+    select: { kind: true, status: true, durationSeconds: true, caloriesEstimateKcal: true },
   });
-  parts.push(`Workouts in the last 7 days: ${workoutCount}.`);
+  parts.push(`Workouts in the last 7 days: ${recentSessions.length}.`);
+
+  // Phase D (additive): guided (yoga/aerobics) summary — only when at
+  // least one guided session exists in the window, so output for
+  // strength-only users stays byte-identical.
+  const guidedSessions = recentSessions.filter(
+    (w) => w.kind === 'yoga' || w.kind === 'aerobics',
+  );
+  if (guidedSessions.length > 0) {
+    const yogaCount = guidedSessions.filter((w) => w.kind === 'yoga').length;
+    const aerobicsCount = guidedSessions.filter((w) => w.kind === 'aerobics').length;
+    const guidedCompleted = guidedSessions.filter((w) => w.status === 'completed');
+    const guidedMinutes = Math.round(
+      guidedCompleted.reduce((sum, w) => sum + (w.durationSeconds ?? 0), 0) / 60,
+    );
+    const guidedKcal = Math.round(
+      guidedCompleted.reduce((sum, w) => sum + (w.caloriesEstimateKcal ?? 0), 0),
+    );
+    parts.push(
+      `Guided workouts in the last 7 days: ${yogaCount} yoga, ${aerobicsCount} aerobics${guidedMinutes > 0 ? `, ${guidedMinutes} active minutes` : ''}${guidedKcal > 0 ? `, ~${guidedKcal} estimated kcal burned` : ''}.`,
+    );
+  }
 
   const latestWeight = await prisma.measurement.findFirst({
     where: { userId, type: 'weight' },

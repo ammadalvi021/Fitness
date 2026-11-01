@@ -342,3 +342,133 @@ Defect: `GET /api/uploads/[key]` checked authentication only — any authenticat
 - `mine=1` recipe browse ignores `excludeAllergen` (pre-existing, out of scope).
 - Migrations `20261015090000_v214_recipe_allergen_screening`, `20261015121500_v215_recipe_content_hash`, `20261015195900_v217_recipe_revision`, `20261016133000_v218_menu_submissions`, `20261016133000_v218_upload_ownership` must all be applied (`prisma migrate deploy`) before deploying.
 - Google Fit OAuth and USDA-live still need owner keys + one smoke test each.
+
+## v22 Phase A addendum (2026-10-31 — Yoga & Aerobics: data layer, seed content, catalog APIs, media manifest)
+
+Scope honoured: data layer + seed + catalog APIs + media manifest ONLY. No UI
+pages/players (Phases B/C), no changes to sessions/progress/plan-generator/coach
+(Phase D), no existing endpoint behaviour changed, billing untouched.
+
+| Item | Grade | Evidence |
+| --- | --- | --- |
+| Prisma models `YogaPose`, `YogaSequence`, `YogaSequencePose`, `AerobicRoutine`, `RoutineStep`; additive `WorkoutSession.kind/sourceSlug/durationSeconds/caloriesEstimateKcal`; additive `Profile.workoutTypes` | **PASS** | `prisma validate` clean; `prisma generate` clean; schema diff reviewed field-by-field against the approved plan |
+| Migration `20261031074725_v22_yoga_aerobics` | **PASS** | Generated via `prisma migrate dev` against a scratch PostgreSQL 16 after baseline `migrate deploy` of the 19 prior migrations; SQL inspected — ONLY `ADD COLUMN`s (with defaults), 5 `CREATE TABLE`s, indexes and FKs; zero drops/renames/column alters. Fresh empty-DB `migrate deploy` of all 20 migrations → "Database schema is up to date!" |
+| `@fitfusion/core` MET module (`met.ts`: `YOGA_MET`, `AEROBICS_MET`, `estimateCaloriesKcal`, `sequenceDurationSeconds`, `routineDurationSeconds`) | **PASS** | 12/12 new unit tests; full core suite **398/398** (26 files). All outputs are estimates and must be labelled as such |
+| Seed content: 25 yoga poses, 7 sequences (62 sequence poses), 6 aerobic routines (87 steps) | **PASS** | Seed run TWICE against the scratch DB with identical counts both runs (`yogaPoses=25 yogaSequences=7 sequencePoses=62 aerobicRoutines=6 routineSteps=87`); existing counts unchanged (recipes=270, exercises=50, foods=169). Original copy, no medical/rehabilitation claims; every routine duration ≈ target (870/1200/1500/1500/1800/1800 s) |
+| Catalog APIs: `GET /api/yoga/poses`, `GET /api/yoga/sequences`, `GET /api/yoga/sequences/[slug]`, `GET /api/aerobics/routines`, `GET /api/aerobics/routines/[slug]` | **PASS** | 8/8 integration tests against the seeded scratch DB: list counts, filters, pose order + `each` side preserved, phase order warmup→main→cooldown, computed durations match core maths, unknown slugs → 404 `not_found` |
+| Guided-media manifest (`apps/web/lib/guided-media/manifest.ts`) | **PASS** | 4/4 tests: covers exactly the seeded 25+6 slugs (asserted against the seed data file), every non-null URL resolves to a real file in `public/`, zero references to `/exercise-videos/` or `/exercise-gifs/`. All entries are honest placeholders (null URLs) — no demonstration media exists yet |
+| Typecheck (all workspaces) | **PASS** | `npm run typecheck` → 0 errors |
+| Production build (`apps/web`) | **PASS** | `next build` compiled successfully; all 5 new API routes present in the route table |
+| Existing suites | **PASS with disclosed pre-existing failures** | db **419/419** (14 files); ai **11/11**; web **1042 passed / 14 failed / 1 skipped** (1057). The 14 failures are in 7 older files (seed-data, v18-custom-recipes, v212-nutrition-correctness, v212-recipe-browse, recipe-serving-diary, onboarding-options, extended-flows) and are **pre-existing drift**, not Phase A regressions: none touch yoga/aerobics/workouts or any file changed in Phase A. Evidence: `seed-data.test.ts` expects 31 recipes/149 foods/544 aliases vs the 270/169/571 the seed has produced since the v21 batch; `v212-recipe-browse` expects `halal` tag counts after halal tags were stripped in v21; diary/nutrition tests expect 201 where v21.4 governance validation returns 400; custom-recipe nutrition totals predate the v18/v21 food-catalog expansion; onboarding test expects a `body.data` envelope the route does not emit. Identified, not hidden; fixing them is out of Phase A scope |
+
+**Phase A limitations (honest):**
+- All pose/routine media is `placeholder` with null URLs — no demonstration assets exist yet (Step 7-compliant; nothing is faked or substituted).
+- Yoga/aerobics sessions cannot be started or completed yet — players are Phases B/C; `WorkoutSession` guided columns are schema-ready but unused until Phase D wiring.
+- The catalog API integration suite skips (visibly) unless the DB is seeded; it was executed here against the seeded scratch DB (8/8).
+
+## v22 Phase B addendum (2026-10-31 — Yoga UI, pose-by-pose player, guided completion recording)
+
+Scope honoured: yoga browse/detail/player + additive guided-session recording
+ONLY. No aerobics UI (Phase C), no preferences/plan-generator/progress/coach
+changes (Phase D), no existing strength-flow behaviour changed, billing
+untouched, no `.env`/secrets read or edited.
+
+| Item | Grade | Evidence |
+| --- | --- | --- |
+| Guided player state machine (`apps/web/lib/guided-player/machine.ts`) | **PASS** | Pure TS (no React): 'each' expands to left-then-right holds, transitions inserted between poses with the incoming step's transitionSeconds, PAUSE freezes countdown + elapsed, SKIP never counts a segment, REPEAT restarts a hold / rewinds from a transition (un-counting the hold), FINISH_EARLY completes with partial counts. 13/13 unit tests |
+| `POST /api/workouts/sessions` guided creation | **PASS** | Additive `kind` (default 'strength') + `sourceSlug`; yoga requires sourceSlug (400 without), unknown slug → 404 `not_found`, name defaults to the sequence title, kind+sourceSlug stored. Integration-tested against seeded scratch PG |
+| `PATCH /api/workouts/sessions/[id]` guided completion | **PASS** | Additive optional `durationSeconds` (1..21600). Only for yoga/aerobics sessions being marked completed: stores duration (client value, else wall-clock from startedAt→endedAt) and computes `caloriesEstimateKcal` SERVER-SIDE from the sequence/routine MET value + latest weight Measurement (kg as-is; lb/lbs × 0.453592; unknown unit → null). Schema accepts no client calorie value (smuggled value proven ignored). Strength sessions: guided fields ignored entirely — proven by test (duration/calories stay null) |
+| Guided-sessions integration suite | **PASS** | 9/9 against the seeded scratch PostgreSQL: 401 unauthenticated, 404 bad slug, 400 missing slug, create→complete stores kind/sourceSlug/duration, exact rounded MET calories for kg weight, null calories without weight, exact lb conversion, cross-user PATCH → 404 with the row untouched, strength regression |
+| Yoga browse `/workouts/yoga` | **IMPLEMENTED** | 7 category cards (display names mapped from API category slugs) + full sequence list with level/pose count/total duration, all from `GET /api/yoga/sequences`. Built and typechecked; not browser-exercised |
+| Yoga preview `/workouts/yoga/[slug]` | **IMPLEMENTED** | Ordered pose list (name, Sanskrit name, hold time, side), safety notes, honest labelled media placeholder, Start Session → player. Built and typechecked; not browser-exercised |
+| Yoga player `/workouts/yoga/[slug]/play` | **IMPLEMENTED** | Machine-driven: big countdown, pose X of Y + progress bar, instructions/breathing/beginner modification/cautions, side labels, transition "Get ready" state, next-pose preview, pause/resume/repeat/skip/end-with-confirm, WebAudio segment beeps, aria-live pose announcements, completion screen (active time, poses completed, "Estimated calories" from the PATCH response or the add-weight guidance when null). Creates the guided session on Start and PATCHes completion with active elapsed seconds. Not browser-exercised |
+| Workouts hub Yoga entry card | **IMPLEMENTED** | One additive card on `/workouts` linking to `/workouts/yoga`; page otherwise unrestructured |
+| Typecheck (all workspaces) | **PASS** | web/core/db/ai `tsc --noEmit` → 0 errors |
+| Production build (`apps/web`) | **PASS** | `next build` compiled successfully; new routes in the table: `/workouts/yoga`, `/workouts/yoga/[slug]`, `/workouts/yoga/[slug]/play` |
+| Existing suites | **PASS with disclosed pre-existing failures** | core **398/398**; db **419/419**; ai **11/11**; web **1064 passed / 14 failed / 1 skipped** (1079). The 14 failures are the SAME pre-existing drift in the same 7 files as Phase A (seed-data ×5, v18-custom-recipes ×3, v212-nutrition-correctness, v212-recipe-browse, recipe-serving-diary, onboarding-options, extended-flows) — no new failures; the +22 passing tests over Phase A are the new Phase B suites (13 machine + 9 guided-sessions) |
+
+**Phase B limitations (honest):**
+- The three yoga pages are IMPLEMENTED, not PASS: they were compiled and typechecked but never exercised in a real browser in this phase.
+- Pose media remains `placeholder` everywhere — the player shows the clearly labelled "Demonstration media coming soon" panel; no video is faked or substituted.
+- Guided sessions record into `WorkoutSession` history, but progress/plan/coach surfaces do not yet present guided sessions distinctly — that wiring is Phase D.
+- Aerobics sessions cannot be created from the API yet (`kind` enum is strength|yoga); the PATCH completion path already handles kind 'aerobics' for Phase C.
+
+## v22 Phase C addendum (2026-10-31 — Aerobics UI, follow-along player, aerobics guided sessions)
+
+Scope honoured: aerobics browse/preview/player + the additive aerobics
+extension to guided-session creation ONLY. No Phase D work (preferences /
+plan mixing / progress / coach), no Phase E work, no existing endpoint
+behaviour changed beyond the specified additive `kind: 'aerobics'` support
+in `POST /api/workouts/sessions`, the PATCH route was NOT modified, billing
+untouched, no `.env`/secrets read or edited. Source: v22.2 (cumulative —
+Phase A + B + C).
+
+| Item | Grade | Evidence |
+| --- | --- | --- |
+| Aerobics follow-along engine (`apps/web/lib/guided-player/aerobics-machine.ts`) | **PASS** | Pure TS sibling to the yoga machine (yoga machine + its 13 tests untouched, still 13/13). Steps sorted warmup→main→cooldown then step order; exactly ONE timed segment per step — no bilateral expansion, no inserted transitions; segments carry step name, cue, lowImpactAlternative, phase label. Same playback semantics: PAUSE freezes countdown + elapsed, SKIP never counts, REPEAT restarts the current step, FINISH_EARLY preserves active elapsed, total = plain step sum (cross-checked against `routineDurationSeconds` from `@fitfusion/core` and the detail API's `totalDurationSeconds`). 13/13 new unit tests |
+| `POST /api/workouts/sessions` aerobics creation | **PASS** | Additive: `kind` enum extended to include `'aerobics'`; aerobics requires `sourceSlug` (400 `validation_error` without), validates against `prisma.aerobicRoutine` (404 `not_found`), name defaults to the routine title, `sourceSlug` stored for guided kinds (yoga + aerobics), `null` for strength. Strength and yoga request/response behaviour unchanged — proven by the pre-existing suite cases |
+| `PATCH /api/workouts/sessions/[id]` aerobics completion | **PASS** | Route NOT rewritten in Phase C; its pre-existing aerobics path (server-side `guidedCalorieEstimate()` from `AerobicRoutine.metValue` + latest weight) was exercised end-to-end for the first time by the new integration cases: duration stored, calories = exact rounded MET formula, client-smuggled calorie value ignored |
+| Guided-sessions integration suite (aerobics block) | **PASS** | 14/14 in the file against the seeded scratch PostgreSQL (9 pre-existing yoga/strength + 5 new aerobics): valid create → 201 with kind/sourceSlug/name from routine; bad slug → 404; missing slug → 400; completion stores duration + server-calculated MET calories with smuggled value ignored; cross-user PATCH → 404 with the row untouched |
+| Aerobics browse `/workouts/aerobics` | **IMPLEMENTED** | 6 category cards (beginner, low-impact, dance, moderate-cardio, full-body, advanced) + full routine list from `GET /api/aerobics/routines` (level/category badges, duration, step count). Built and typechecked; not browser-exercised |
+| Aerobics preview `/workouts/aerobics/[slug]` | **IMPLEMENTED** | Phase breakdown (warm-up/main/cool-down step lists with per-step durations), intensity + level, total duration/step count, low-impact alternatives noted per step, safety notes when present, honest labelled media placeholder (`mediaStatus` placeholder — no fake video). Built and typechecked; not browser-exercised |
+| Aerobics player `/workouts/aerobics/[slug]/play` | **IMPLEMENTED** | Machine-driven follow-along player: big countdown, current move + cue, phase indicator (Warm-up / Main / Cool-down), current step's low-impact alternative, next-move preview, pause/resume/repeat/skip, WebAudio step-change cues (yoga player pattern), aria-live announcements, completion screen. Creates the session via POST `{kind:'aerobics', sourceSlug}` on Start (same point as the yoga player) and PATCHes completion with active elapsed seconds only — never client calories. Built and typechecked; not browser-exercised |
+| Workouts hub Aerobics entry card | **IMPLEMENTED** | One additive card on `/workouts` immediately after the Yoga card, linking to `/workouts/aerobics`; page otherwise unrestructured |
+| Typecheck (all workspaces) | **PASS** | `npm run typecheck` → exit 0, 0 errors |
+| Production build (`apps/web`) | **PASS** | `next build` compiled successfully; new routes in the table: `/workouts/aerobics`, `/workouts/aerobics/[slug]`, `/workouts/aerobics/[slug]/play` |
+| Existing suites | **PASS with disclosed pre-existing failures** | core **398/398**; db **419/419**; ai **11/11**; web **1082 passed / 14 failed / 1 skipped** (1097). The 14 failures are in the SAME 7 pre-existing files as Phases A/B (seed-data, v18-custom-recipes, v212-nutrition-correctness, v212-recipe-browse, recipe-serving-diary, onboarding-options, extended-flows) — no new failures; the +18 passing over Phase B are the new Phase C suites (13 engine + 5 sessions) |
+
+**Phase C limitations (honest):**
+- The three aerobics pages are IMPLEMENTED, not PASS: compiled and typechecked but never exercised in a real browser in this phase.
+- Routine media remains `placeholder` everywhere — the preview and player show the clearly labelled "Demonstration media coming soon" panel; no video is faked or substituted.
+- Guided sessions still record into `WorkoutSession` history; presenting them distinctly in progress/plan/coach surfaces remains Phase D (not started).
+
+## v22 Phase D addendum (2026-10-31 — preferences, weekly-plan mixing, progress, coach context)
+
+Scope honoured: the four Phase D pieces ONLY. No Phase E work, billing
+untouched, no `.env`/secrets read or edited, every change to an existing
+endpoint is additive. The strength-only plan-generator guard is absolute:
+profiles with `workoutTypes` empty or `['strength']` generate plans
+identical to pre-Phase-D behaviour (pinned by test). Source: v22.3
+(cumulative — Phases A + B + C + D).
+
+| Item | Grade | Evidence |
+| --- | --- | --- |
+| Workout-type preference API (`workoutTypes` on Profile) | **PASS** | `ProfileUpdateSchema` (packages/core) gains `workoutTypes`: enum `strength|yoga|aerobics`, max 3, deduplicated with first-occurrence order preserved — wiring PUT /api/profile and POST /api/onboarding through the shared schema. Settings route gains the same enum + dedupe and returns `workoutTypes` from GET /api/settings. Invalid values fail through the existing zod → `validation_error` 400 shapes. Integration (scratch PostgreSQL): settings round-trip dedupes `['yoga','strength','yoga']` → `['yoga','strength']`, invalid settings value → 400, profile round-trip stores/returns, invalid profile value → 400 (phase-d-preferences.test.ts, 4/4). Core validation unit tests added (core suite 404/404, +6 over Phase C) |
+| Onboarding workout-type selection | **IMPLEMENTED** | Onboarding is the surface that actually collects workoutDays/workoutMinutesPerDay in the UI (settings/profile UIs do not edit those fields — audited), so the multi-select (Strength/Yoga/Aerobics CheckRows, existing toggleIn pattern) was added beside the workout-days toggles and sent in the onboarding payload when non-empty. Built and typechecked; not browser-exercised |
+| Weekly-plan mixing (plan generator) | **PASS** | When `workoutTypes` includes yoga/aerobics, workout days deterministically become guided days referencing real seeded catalog entries. Rotation: guided kinds in fixed order (yoga, aerobics); mixed with strength, every SECOND workout session (odd index) is guided — strength days keep their own focus-rotation counter so strength picks are unaffected; guided-only profiles get all workout days guided, kinds cycling. Candidates filtered level-appropriately (seeded levels reuse the fitnessExperience vocabulary via the existing allowedDifficulties list, fallback to all of that kind) and ordered by (closest total duration to workoutMinutesPerDay, slug). Guided day Json: `{type:'yoga'|'aerobics', title, sourceSlug, durationSeconds, note}`. `no_exercises` 400 now only when strength days will actually be generated. Response notes gain exactly one additive guided note when guided days exist. Integration (seeded scratch PostgreSQL, phase-d-plan-mixing.test.ts, 4/4): `[]` vs `['strength']` days deep-equal (the pin); mixed ['strength','yoga'] has slug-verified yoga days + strength days and regenerates identically; guided-only ['yoga','aerobics'] has all workout days guided with both kinds; strength-only notes equal the exact 3 baseline strings |
+| Workouts-page guided-day rendering | **IMPLEMENTED** | `normalizePlanDays` additively carries guidedKind/sourceSlug/durationSeconds; guided days render a Yoga/Aerobics badge, duration, and a "View session" link to the guided player route instead of the strength Start-session buttons. Dashboard parses plan days defensively and does not crash on guided days (checked; no change needed). Built and typechecked; not browser-exercised |
+| Progress — active minutes + estimated calories (`GET /api/progress`) | **PASS** | Additive only: workouts object gains `activeMinutes`, `estimatedCaloriesKcal` and `byKind` {strength, yoga, aerobics} × {sessions, completed, activeMinutes, estimatedCaloriesKcal}; byDay entries gain `activeMinutes`. All computed from COMPLETED sessions' stored durationSeconds/caloriesEstimateKcal only — null durations contribute nothing, null calories count 0, nothing is estimated retroactively; every pre-existing field keeps identical values. Integration (phase-d-progress-coach.test.ts): hand-seeded sessions of all three kinds incl. null-calorie and an in-progress yoga (3600s/999 kcal, excluded) reproduce the exact expected totals (50 active minutes, 150 estimated kcal, per-kind splits, per-day minutes) |
+| Progress page summary UI | **IMPLEMENTED** | Defensive parsing (absent fields → 0) + a MetricCard row in the page's existing style: Active minutes, Estimated calories (labelled "estimated calories from completed workouts"), Strength/Yoga/Aerobics session split, Guided minutes with per-kind subtext. Built and typechecked; not browser-exercised |
+| Coach context (`lib/coach-context.ts`) | **PASS** | Additive, same sentence style; the coach_personalization opt-out early return is untouched (tested: opted-out user → ''). Profile sentence gains `workout types: …` only when set. The existing `Workouts in the last 7 days: N.` sentence is byte-identical (now counted from the same findMany). Only when guided sessions exist in the window, one added sentence: per-kind guided counts (all statuses, matching the total-count semantics) with completed-only active minutes and estimated kcal — e.g. "Guided workouts in the last 7 days: 2 yoga, 1 aerobics, 50 active minutes, ~150 estimated kcal burned." No guided sessions and no preferences → output byte-identical to pre-Phase-D |
+| Typecheck (all workspaces) | **PASS** | `npm run typecheck` → exit 0, 0 errors |
+| Production build | **PASS** | `npm run build` clean across all workspaces |
+| Existing suites | **PASS with disclosed pre-existing failures** | core **404/404** (+6 new validation tests); db **419/419**; ai **11/11**; web **1093 passed / 14 failed / 1 skipped** (1108). The 14 failures are in the SAME 7 pre-existing files as Phases A–C (seed-data, v18-custom-recipes, v212-nutrition-correctness, v212-recipe-browse, recipe-serving-diary, onboarding-options, extended-flows) — no new failures; the +11 passing over Phase C are exactly the new Phase D integration tests. Of the 14, the one touching this phase's area is the pre-existing extended-flows misc-endpoints failure (includes the old progress `waterByDay` drift) — it predates Phase D, is unchanged in count, and was neither fixed (out of scope) nor worsened |
+
+**Phase D limitations (honest):**
+- All pages (onboarding selection, workouts-page guided cards, progress summary) are IMPLEMENTED, not PASS: compiled and typechecked but never exercised in a real browser in this phase.
+- Guided plan days link to the guided session preview/player; starting a guided day does not yet create the session from the plan card (the player creates it on Start, as in Phases B/C).
+- Progress active minutes for strength sessions remain 0 unless a duration was recorded — strength sessions store no durationSeconds today, and none is invented.
+
+## v22 Phase E addendum (2026-10-31 — full test pass, end-to-end verification, release)
+
+Scope honoured: verification and release ONLY. No new features; no source
+behaviour changed (the only repo addition is the new chain test). Billing
+untouched; no real `.env`/secrets read or edited — all verification ran
+against a NEW sandbox scratch PostgreSQL 16 cluster created for this phase
+(port 5433, database `fitfusion_phasee`) via process-env `DATABASE_URL`.
+Source: v22.4 (cumulative — Phases A + B + C + D + E verification).
+
+| Item | Grade | Evidence |
+| --- | --- | --- |
+| Fresh-environment proof (migrations + seed idempotency) | **PASS** | `prisma migrate deploy` from an EMPTY database: all 20 migrations applied, `20261031074725_v22_yoga_aerobics` last and clean. Seed run twice: guided counts identical both runs (poses 25, sequences 7, sequence poses 62, routines 6, steps 87); pre-existing catalogs untouched (exercises 50, recipes 270, foods 169) |
+| Cross-phase end-to-end chain (`phase-e-e2e-chain.test.ts`) | **PASS** | 6/6 on the fresh seeded DB: (1) register + PUT /api/profile stores `workoutTypes` ['strength','yoga','aerobics']; (2) generated plan mixes strength days with guided days (yoga `relaxation-and-breathing`, aerobics `low-impact-aerobics` — plan probe verified slugs/titles/durations against the catalogs); (3) yoga (1800s) + aerobics (1200s) sessions completed through POST/PATCH sessions API with exact server MET calories for the recorded 70 kg weight; (4) GET /api/progress: total 2, completed 2, activeMinutes 50, estimatedCaloriesKcal = exact MET sum, byKind yoga {1,1,30,kcal} / aerobics {1,1,20,kcal} / strength zeros; (5) coach context contains the preference, "1 yoga, 1 aerobics", 50 active minutes, the estimated-kcal sum, latest weight; (6) second user: progress all zeros, coach context has no guided sentence and none of user 1's data |
+| Browser exercise (Playwright Chromium, production build, real UI login) | **PASS** | Production server (`next start`) against the fresh seeded DB; health ok:true (database/env/migrations green). Logged in through the real login form (landed /dashboard). Every page below returned 200, rendered its expected content, and produced ZERO console/page errors; screenshots captured: /workouts (Yoga + Aerobics hub cards), /workouts plan view (guided days "Relaxation & Breathing" + "Low-Impact Aerobics" rendered), /workouts/yoga, /workouts/yoga/beginner-yoga-foundations (poses + hold times), …/play (player + Start), /workouts/aerobics, /workouts/aerobics/beginner-aerobics-starter (Warm-up/Main/Cool-down phases), …/play (player + Start), /progress ("Active minutes" + "Estimated calories" cards). Onboarding: wizard driven to the workouts step (basics filled, steps skipped) — "Workout types" Strength/Yoga/Aerobics check rows visible and the Yoga row toggles to the selected state on click. Pages graded IMPLEMENTED in Phases B–D are upgraded to PASS (browser-exercised) on this evidence. Full interactive player completion in the browser was not performed (API-level completion is chain-proven) |
+| Full suites (fresh re-run) | **PASS with disclosed pre-existing failures** | core **404/404**; db **419/419**; ai **11/11**; web **1099 passed / 14 failed / 1 skipped** (1114). +6 passing over Phase D = exactly the new chain test's 6 steps. The 14 failures are the SAME tests in the SAME 7 pre-existing files as the Phase A baseline (seed-data 6, v18-custom-recipes 3, v212-nutrition-correctness 1, v212-recipe-browse 1, recipe-serving-diary 1, onboarding-options 1, extended-flows 1) — itemised in the release report; NOT fixed in this phase (pre-existing drift outside this module; a separate decision) |
+| Typecheck (all workspaces) | **PASS** | `npm run typecheck` → exit 0, 0 errors |
+| Production build | **PASS** | `npm run build` clean; route table includes all yoga/aerobics routes, /progress, /onboarding |
+| Defects found in module code | **None** | Every Phase E check passed on its first run; no fix was required, so no source file changed in Phase E |
+
+**Phase E limitations (honest):**
+- Guided *player completion* was exercised end-to-end at the API level (chain test) and the play pages were loaded and verified rendering in a real browser, but a full in-browser play-through (pressing Start and running a session to completion in the UI) was not performed.
+- Media for poses/routines remains the labelled placeholder ("Demonstration media coming soon"); no real demonstration assets exist yet.
+- The 14 pre-existing failures in 7 older test files remain, unchanged, as known out-of-scope drift (see the release report for the itemised list).

@@ -19,8 +19,11 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   BookOpen,
+  ChevronRight,
   Crown,
   Dumbbell,
+  Flower2,
+  HeartPulse,
   History,
   Info,
   Play,
@@ -334,13 +337,76 @@ export default function WorkoutsPage() {
             </GlassPanel>
           ) : null}
 
+          {/* Yoga entry (V22 Phase B) */}
+          <section aria-label="Yoga" className="mb-6">
+            <Link href="/workouts/yoga" className="block">
+              <GlassPanel className="anim-hover-lift flex items-center gap-4 p-5">
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+                  style={{
+                    color: "var(--accent)",
+                    backgroundColor: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <Flower2 size={22} aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="t-card-heading">Yoga</h2>
+                  <p className="mt-0.5 text-sm" style={secondaryText}>
+                    Guided pose-by-pose sessions — beginner, morning, flexibility,
+                    strength, balance, relaxation and full-body flows.
+                  </p>
+                </div>
+                <ChevronRight
+                  size={20}
+                  aria-hidden="true"
+                  className="shrink-0"
+                  style={{ color: "var(--accent)" }}
+                />
+              </GlassPanel>
+            </Link>
+          </section>
+
+          {/* Aerobics entry (V22 Phase C) */}
+          <section aria-label="Aerobics" className="mb-6">
+            <Link href="/workouts/aerobics" className="block">
+              <GlassPanel className="anim-hover-lift flex items-center gap-4 p-5">
+                <span
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+                  style={{
+                    color: "var(--accent)",
+                    backgroundColor: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <HeartPulse size={22} aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="t-card-heading">Aerobics</h2>
+                  <p className="mt-0.5 text-sm" style={secondaryText}>
+                    Guided follow-along routines — warm-up, main and cool-down
+                    phases across beginner, low-impact, dance, moderate cardio,
+                    full-body and advanced sessions.
+                  </p>
+                </div>
+                <ChevronRight
+                  size={20}
+                  aria-hidden="true"
+                  className="shrink-0"
+                  style={{ color: "var(--accent)" }}
+                />
+              </GlassPanel>
+            </Link>
+          </section>
+
           {/* Weekly schedule */}
           {plan && days.length ? (
             <section aria-label="Weekly schedule" className="mt-2">
               <h2 className="t-card-heading mb-3">This week</h2>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {days.map((day) => {
-                  const missed = !day.isRest && day.dayIndex < todayIdx;
+                  const missed = !day.isRest && !day.guidedKind && day.dayIndex < todayIdx;
                   const startKey = `${day.dayIndex}-s`;
                   const reschedKey = `${day.dayIndex}-r`;
                   return (
@@ -361,6 +427,11 @@ export default function WorkoutsPage() {
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {day.dayIndex === todayIdx ? <LuxBadge tone="accent">Today</LuxBadge> : null}
                           {day.isRest ? <LuxBadge>Rest</LuxBadge> : null}
+                          {day.guidedKind ? (
+                            <LuxBadge tone="accent">
+                              {day.guidedKind === "yoga" ? "Yoga" : "Aerobics"}
+                            </LuxBadge>
+                          ) : null}
                           {missed ? <LuxBadge tone="warning">Missed</LuxBadge> : null}
                         </div>
                       </div>
@@ -402,7 +473,38 @@ export default function WorkoutsPage() {
                         </p>
                       ) : null}
 
-                      {!day.isRest ? (
+                      {/* Phase D: guided days link to the guided player instead
+                          of creating a strength session. */}
+                      {day.guidedKind ? (
+                        <div className="mt-3">
+                          <p className="flex items-center gap-2 text-sm" style={secondaryText}>
+                            {day.guidedKind === "yoga" ? (
+                              <Flower2 size={16} aria-hidden="true" />
+                            ) : (
+                              <HeartPulse size={16} aria-hidden="true" />
+                            )}
+                            Guided {day.guidedKind === "yoga" ? "yoga" : "aerobics"} session
+                            {day.durationSeconds
+                              ? ` · about ${Math.round(day.durationSeconds / 60)} min`
+                              : ""}
+                          </p>
+                          {day.sourceSlug ? (
+                            <div className="mt-3 flex flex-wrap gap-2 pt-1">
+                              <Link href={`/workouts/${day.guidedKind}/${day.sourceSlug}`}>
+                                <LuxButton
+                                  variant="secondary"
+                                  aria-label={`View ${day.label} guided ${day.guidedKind} session`}
+                                >
+                                  <Play size={16} aria-hidden="true" />
+                                  View session
+                                </LuxButton>
+                              </Link>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {!day.isRest && !day.guidedKind ? (
                         <div className="mt-3 flex flex-wrap gap-2 pt-1">
                           <LuxButton
                             onClick={() => void startSession(day, false)}

@@ -25,6 +25,14 @@ const SettingsSchema = z.object({
   equipment: z.array(z.string().min(1)).max(50).optional(),
   workoutDays: z.array(z.string().min(1)).max(7).optional(),
   workoutMinutesPerDay: z.number().int().min(5).max(300).optional(),
+  // Phase D: preferred workout types — same contract as
+  // ProfileUpdateSchema.workoutTypes (deduped, first-occurrence order;
+  // max(3) checked before dedupe).
+  workoutTypes: z
+    .array(z.enum(['strength', 'yoga', 'aerobics']))
+    .max(3)
+    .transform((arr) => [...new Set(arr)])
+    .optional(),
   workoutLocation: z.string().min(1).max(50).optional(),
   fitnessExperience: z.string().min(1).max(50).optional(),
 });
@@ -44,6 +52,7 @@ function toSettings(profile: {
   workoutMinutesPerDay: number | null;
   workoutLocation: string | null;
   fitnessExperience: string | null;
+  workoutTypes: string[];
 } | null) {
   return {
     dietPreference: profile?.dietPreference ?? 'flexible',
@@ -60,6 +69,7 @@ function toSettings(profile: {
     workoutMinutesPerDay: profile?.workoutMinutesPerDay ?? null,
     workoutLocation: profile?.workoutLocation ?? null,
     fitnessExperience: profile?.fitnessExperience ?? null,
+    workoutTypes: profile?.workoutTypes ?? [],
     // Client-managed (localStorage); returned with defaults for UI binding.
     units: 'metric' as const,
     theme: 'system' as const,

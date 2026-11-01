@@ -70,6 +70,70 @@ describe('ProfileUpdateSchema', () => {
   });
 });
 
+describe('ProfileUpdateSchema — workoutTypes (Phase D)', () => {
+  it('accepts a valid set of workout types', () => {
+    const parsed = ProfileUpdateSchema.safeParse({
+      workoutTypes: ['strength', 'yoga', 'aerobics'],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.workoutTypes).toEqual(['strength', 'yoga', 'aerobics']);
+    }
+  });
+
+  it('accepts an empty array and an absent field', () => {
+    const empty = ProfileUpdateSchema.safeParse({ workoutTypes: [] });
+    expect(empty.success).toBe(true);
+    if (empty.success) expect(empty.data.workoutTypes).toEqual([]);
+    expect(ProfileUpdateSchema.safeParse({}).success).toBe(true);
+  });
+
+  it('dedupes duplicates preserving first-occurrence order', () => {
+    const parsed = ProfileUpdateSchema.safeParse({
+      workoutTypes: ['yoga', 'strength', 'yoga'],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.workoutTypes).toEqual(['yoga', 'strength']);
+    }
+  });
+
+  it('rejects invalid workout type values', () => {
+    expect(
+      ProfileUpdateSchema.safeParse({ workoutTypes: ['cardio'] }).success,
+    ).toBe(false);
+    expect(
+      ProfileUpdateSchema.safeParse({ workoutTypes: ['strength', 'running'] }).success,
+    ).toBe(false);
+  });
+
+  it('rejects more than 3 entries (max checked before dedupe)', () => {
+    expect(
+      ProfileUpdateSchema.safeParse({
+        workoutTypes: ['strength', 'yoga', 'aerobics', 'strength'],
+      }).success,
+    ).toBe(false);
+    expect(
+      ProfileUpdateSchema.safeParse({
+        workoutTypes: ['strength', 'yoga', 'aerobics', 'yoga'],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('flows through OnboardingSchema with dedupe', () => {
+    const parsed = OnboardingSchema.safeParse({
+      workoutTypes: ['aerobics', 'yoga', 'aerobics'],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.workoutTypes).toEqual(['aerobics', 'yoga']);
+    }
+    expect(
+      OnboardingSchema.safeParse({ workoutTypes: ['cardio'] }).success,
+    ).toBe(false);
+  });
+});
+
 describe('OnboardingSchema', () => {
   it('accepts a full onboarding payload', () => {
     expect(

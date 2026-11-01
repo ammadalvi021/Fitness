@@ -215,6 +215,47 @@ export default function ProgressPage() {
   const targets = nutrition.map((n) => n.targetKcal).filter((t): t is number => t != null);
   const avgTarget = targets.length ? Math.round(targets.reduce((a, b) => a + b, 0) / targets.length) : null;
 
+  // Phase D (additive, defensive): workouts summary from /api/progress.
+  // Older cached responses may lack activeMinutes / estimatedCaloriesKcal /
+  // byKind entirely — every field falls back to 0.
+  const workoutSummary = useMemo(() => {
+    const emptyKind = { sessions: 0, completed: 0, activeMinutes: 0, estimatedCaloriesKcal: 0 };
+    const rec =
+      progress && typeof progress === "object" && !Array.isArray(progress)
+        ? (progress as Record<string, unknown>)
+        : null;
+    const w =
+      rec && rec.workouts && typeof rec.workouts === "object" && !Array.isArray(rec.workouts)
+        ? (rec.workouts as Record<string, unknown>)
+        : null;
+    const kindOf = (key: string) => {
+      const byKind =
+        w && w.byKind && typeof w.byKind === "object" && !Array.isArray(w.byKind)
+          ? (w.byKind as Record<string, unknown>)
+          : null;
+      const k =
+        byKind && byKind[key] && typeof byKind[key] === "object" && !Array.isArray(byKind[key])
+          ? (byKind[key] as Record<string, unknown>)
+          : null;
+      if (!k) return emptyKind;
+      return {
+        sessions: toNumber(k.sessions) ?? 0,
+        completed: toNumber(k.completed) ?? 0,
+        activeMinutes: toNumber(k.activeMinutes) ?? 0,
+        estimatedCaloriesKcal: toNumber(k.estimatedCaloriesKcal) ?? 0,
+      };
+    };
+    return {
+      activeMinutes: toNumber(w?.activeMinutes) ?? 0,
+      estimatedCaloriesKcal: toNumber(w?.estimatedCaloriesKcal) ?? 0,
+      byKind: {
+        strength: kindOf("strength"),
+        yoga: kindOf("yoga"),
+        aerobics: kindOf("aerobics"),
+      },
+    };
+  }, [progress]);
+
   const personalRecords = useMemo(() => {
     const rec = (progress as Record<string, unknown> | null)?.personalRecords;
     return Array.isArray(rec) ? rec : [];
@@ -302,6 +343,38 @@ export default function ProgressPage() {
               label="Avg protein"
               value={avgProtein != null ? <span className="t-numeral">{avgProtein} g</span> : "—"}
               subtext="per day"
+            />
+          </div>
+
+          {/* Phase D: activity summary (completed sessions only) */}
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <MetricCard
+              label="Active minutes"
+              value={<span className="t-numeral">{workoutSummary.activeMinutes}</span>}
+              subtext={`in the last ${range} days`}
+            />
+            <MetricCard
+              label="Estimated calories"
+              value={<span className="t-numeral">{workoutSummary.estimatedCaloriesKcal} kcal</span>}
+              subtext="estimated calories from completed workouts"
+            />
+            <MetricCard
+              label="Strength / Yoga / Aerobics"
+              value={
+                <span className="t-numeral">
+                  {workoutSummary.byKind.strength.sessions} / {workoutSummary.byKind.yoga.sessions} / {workoutSummary.byKind.aerobics.sessions}
+                </span>
+              }
+              subtext="sessions by type"
+            />
+            <MetricCard
+              label="Guided minutes"
+              value={
+                <span className="t-numeral">
+                  {Math.round((workoutSummary.byKind.yoga.activeMinutes + workoutSummary.byKind.aerobics.activeMinutes) * 10) / 10}
+                </span>
+              }
+              subtext={`Yoga ${workoutSummary.byKind.yoga.activeMinutes} min · Aerobics ${workoutSummary.byKind.aerobics.activeMinutes} min`}
             />
           </div>
 

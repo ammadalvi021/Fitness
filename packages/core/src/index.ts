@@ -8,6 +8,7 @@ export * from './units.js';
 export * from './bmi.js';
 export * from './energy.js';
 export * from './expenditure.js';
+export * from './met.js';
 export * from './macros.js';
 export * from './water.js';
 export * from './nutrition.js';

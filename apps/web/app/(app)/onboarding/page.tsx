@@ -152,6 +152,7 @@ export default function OnboardingPage() {
   const [fitnessExperience, setFitnessExperience] = useState("");
   const [workoutLocation, setWorkoutLocation] = useState("");
   const [equipment, setEquipment] = useState<string[]>([]);
+  const [workoutTypes, setWorkoutTypes] = useState<string[]>([]);
   const [workoutDays, setWorkoutDays] = useState<string[]>([]);
   const [workoutMinutes, setWorkoutMinutes] = useState("");
   const [exerciseRestrictions, setExerciseRestrictions] = useState("");
@@ -258,6 +259,7 @@ export default function OnboardingPage() {
     p.unitSystem = unitSystem;
     p.halalOnly = halalOnly;
     if (equipment.length) p.equipment = equipment;
+    if (workoutTypes.length) p.workoutTypes = workoutTypes;
     if (workoutDays.length) p.workoutDays = workoutDays;
     const wm = parseInt(workoutMinutes, 10);
     if (Number.isFinite(wm) && wm > 0) p.workoutMinutesPerDay = wm;
@@ -563,6 +565,18 @@ export default function OnboardingPage() {
               <div className="grid gap-2 sm:grid-cols-2">
                 {EQUIPMENT_OPTIONS.map((eq) => (
                   <CheckRow key={eq} label={eq} checked={equipment.includes(eq)} onChange={(v) => toggleIn(equipment, eq, setEquipment)} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="mb-2 block text-sm font-medium text-[var(--text)]">Workout types</span>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  { value: "strength", label: "Strength" },
+                  { value: "yoga", label: "Yoga" },
+                  { value: "aerobics", label: "Aerobics" },
+                ].map((t) => (
+                  <CheckRow key={t.value} label={t.label} checked={workoutTypes.includes(t.value)} onChange={(v) => toggleIn(workoutTypes, t.value, setWorkoutTypes)} />
                 ))}
               </div>
             </div>

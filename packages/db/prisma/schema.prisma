@@ -114,6 +114,9 @@ model Profile {
   equipment             String[]  @default([])
   workoutDays           String[]  @default([])
   workoutMinutesPerDay  Int?
+  // V22 (Yoga & Aerobics Phase A): preferred workout types, e.g.
+  // ['strength'], ['yoga','aerobics']. Empty = no preference recorded.
+  workoutTypes          String[]  @default([])
   dietPreference        String?   @default("flexible")
   allergies             String[]  @default([])
   intolerances          String[]  @default([])
@@ -496,6 +499,16 @@ model WorkoutSession {
   endedAt       DateTime?
   status        String    @default("in_progress")
   createdAt     DateTime  @default(now())
+  // V22 (Yoga & Aerobics Phase A): guided-session classification. Additive
+  // only — existing rows default to "strength" and keep prior behaviour.
+  // "strength" | "yoga" | "aerobics"
+  kind                String  @default("strength")
+  // Slug of the YogaSequence / AerobicRoutine completed (guided kinds only).
+  sourceSlug          String?
+  durationSeconds     Int?
+  // MET-based estimate (see @fitfusion/core met.ts). An ESTIMATE only —
+  // every UI surface must label it as such.
+  caloriesEstimateKcal Float?
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   workoutPlan WorkoutPlan? @relation(fields: [workoutPlanId], references: [id], onDelete: SetNull)
@@ -807,4 +820,116 @@ model HealthConnection {
   updatedAt           DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+
+// ---------------------------------------------------------------------------
+// Yoga & Aerobics (V22 Phase A) — guided workout catalog.
+// Content is database-backed (seeded), never frontend-only arrays. Media is
+// honest: mediaStatus "placeholder" until a real, verified asset exists —
+// no clip is ever substituted for a different movement.
+// ---------------------------------------------------------------------------
+
+model YogaPose {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  sanskritName       String?
+  description        String
+  // Ordered array of instruction step strings.
+  instructions       Json
+  breathing          String?
+  // Beginner modification for this pose.
+  modifications      String?
+  cautions           String?
+  difficulty         String
+  defaultHoldSeconds Int
+  // True when the pose is performed on both sides (left/right).
+  bilateral          Boolean  @default(false)
+  focusAreas         String[]
+  mediaType          String   @default("none")
+  mediaUrl           String?
+  posterUrl          String?
+  // "placeholder" | "verified" — see lib/guided-media/manifest.ts.
+  mediaStatus        String   @default("placeholder")
+  createdAt          DateTime @default(now())
+
+  sequencePoses YogaSequencePose[]
+}
+
+model YogaSequence {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  // beginner | morning | flexibility | strength | balance |
+  // relaxation-breathing | full-body
+  category     String
+  level        String
+  description  String
+  safetyNotes  String?
+  metValue     Float
+  mediaType    String   @default("none")
+  mediaUrl     String?
+  posterUrl    String?
+  mediaStatus  String   @default("placeholder")
+  createdAt    DateTime @default(now())
+
+  poses YogaSequencePose[]
+}
+
+model YogaSequencePose {
+  id                String @id @default(cuid())
+  sequenceId        String
+  poseId            String
+  order             Int
+  holdSeconds       Int
+  // both | left | right | each ("each" = hold once per side)
+  side              String @default("both")
+  transitionSeconds Int    @default(5)
+  cue               String?
+
+  sequence YogaSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  pose     YogaPose     @relation(fields: [poseId], references: [id], onDelete: Restrict)
+
+  @@unique([sequenceId, order])
+  @@index([sequenceId])
+  @@index([poseId])
+}
+
+model AerobicRoutine {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  // beginner | low-impact | dance | moderate-cardio | full-body | advanced
+  category     String
+  level        String
+  // low | low-moderate | moderate | moderate-high | high
+  intensity    String
+  metValue     Float
+  description  String
+  safetyNotes  String?
+  mediaType    String   @default("none")
+  mediaUrl     String?
+  posterUrl    String?
+  mediaStatus  String   @default("placeholder")
+  createdAt    DateTime @default(now())
+
+  steps RoutineStep[]
+}
+
+model RoutineStep {
+  id                   String @id @default(cuid())
+  routineId            String
+  order                Int
+  // warmup | main | cooldown
+  phase                String
+  name                 String
+  durationSeconds      Int
+  cue                  String?
+  lowImpactAlternative String?
+
+  routine AerobicRoutine @relation(fields: [routineId], references: [id], onDelete: Cascade)
+
+  @@unique([routineId, order])
+  @@index([routineId])
 }
